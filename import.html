@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>庫存期初匯入</title>
+<style>body{font:14px system-ui,sans-serif;max-width:760px;margin:24px auto;padding:0 16px}
+.warn{background:#fff3cd;border:1px solid #e0b100;padding:10px;border-radius:6px}
+button{padding:8px 16px}pre{background:#f4f4f4;padding:8px;white-space:pre-wrap}</style></head><body>
+<h2>庫存期初匯入（Excel「庫存表」，覆蓋模式）</h2>
+<p class="warn">⚠ 覆蓋：每列的現有庫存直接設成 Excel 的值；與舊值有差會在流水帳留一筆「import_adjust」。Excel 沒出現的料號/倉庫<b>不會被動</b>。</p>
+<p>欄位：產品編號、品名規格、單位、倉庫編號、倉庫名稱、現有庫存、借入數量、借出數量、實際在庫量。</p>
+<input type="file" id="f" accept=".xlsx,.xls,.csv"> <button id="go" disabled>開始匯入</button>
+<pre id="log">先選檔。</pre>
+<script src="/_lib/auth.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+var rows=[],log=function(s){document.getElementById('log').textContent+='\n'+s};
+document.getElementById('f').onchange=function(e){
+  var r=new FileReader();r.onload=function(){
+    var wb=XLSX.read(r.result,{type:'array'});var ws=wb.Sheets[wb.SheetNames[0]];
+    var j=XLSX.utils.sheet_to_json(ws,{defval:''});
+    // 欄位按表頭名對映（不靠欄位位置）
+    rows=j.map(function(o){return{part_no:o['產品編號'],name:o['品名規格'],unit:o['單位'],wh_code:o['倉庫編號'],wh_name:o['倉庫名稱'],qty:o['現有庫存'],borrow_in:o['借入數量'],borrow_out:o['借出數量']}})
+      .filter(function(x){return String(x.part_no).trim()&&String(x.wh_code).trim()});
+    document.getElementById('log').textContent='分頁「'+wb.SheetNames[0]+'」讀到 '+rows.length+' 列（有效）';
+    document.getElementById('go').disabled=!rows.length;
+  };r.readAsArrayBuffer(e.target.files[0]);
+};
+document.getElementById('go').onclick=async function(){
+  if(!confirm('確定以此檔「覆蓋」庫存？'))return;
+  this.disabled=true;
+  await INVAuth.tryAutoLogin();
+  var batch='imp-'+new Date().toISOString().replace(/[:.]/g,'-');var up=0,adj=0;
+  for(var i=0;i<rows.length;i+=80){
+    var res=await INVAuth.authedFetch('/api/import/stock',{method:'POST',headers:{'content-type':'application/json'},
+      body:JSON.stringify({batch:batch,source:'庫存表',rows:rows.slice(i,i+80)})});
+    var d=await res.json();
+    if(!d.ok){log('失敗：'+(d.error||res.status)+'（已處理 '+up+' 列，可重跑，冪等）');return}
+    up+=d.upserted;adj+=d.adjusted;log('已處理 '+up+'/'+rows.length);
+  }
+  log('完成：'+up+' 列，其中 '+adj+' 列數量有差異（已寫流水帳）。批次 '+batch);
+};
+</script></body></html>

@@ -218,24 +218,12 @@ Chris 說出 **「開始會議」「會議開始」「會議中」「現在會�
 
 ---
 
-# CLAUDE.md — <改成這個 repo 的名字>
-
-> 這份是從 `rgts-repo-template` 開出來的空殼，已自帶上面的全域規範。
->
-> ⚠️ **上面的 `RGTS-SHARED-RULES` 區塊不要手改** — 它由
-> [`RGTS-Data/claude-md`](https://github.com/RGTS-Data/claude-md) 的 `scripts/sync-rules.py`
-> 自動同步，手改會在下次同步被蓋掉。要改規範去正本改。
->
-> repo 專屬規則寫在**這條線以下**；與全域規範衝突時**以 repo 為準**（就近覆寫，
-> 例：全域寫「回覆 40 字內」，這裡可以改成 150 字）。
->
-> 這段引言可以整段刪掉，換成真正的內容。
+# CLAUDE.md — rgts-inventory
 
 ## Repo
-一句話說明這個 repo 是什麼、線上網址、平台（Cloudflare Pages / Workers / D1 / R2…）。
+RGTS 庫存系統：進料／領料／扣帳，連動 bom-tool 採購總表。Cloudflare Pages + Functions + D1（共用 `rgts-pi-db`）。
 
 ## 架構
-關鍵檔案、資料表、env binding、部署方式（push 哪個 branch 會自動部署）。
-
-## Landmines（踩過的，別再踩）
-每次踩到新地雷就補一條上來，寫「為什麼」而不只是「怎麼做」。
+- 只**唯讀** `purchase_orders` / `purchase_lines` / `projects`；只寫自己的 `inv_*` 表（`migrations/0001_inventory.sql`）。
+- `functions/api/`：`stock/list`、`import/stock`（Excel 期初覆蓋）、`receipt/gate`（發票金額核對）、`receipt/post`（進料）、`issue/post`（以專案領料）、`moves/list`。
+- 認證模型同 rgts-pmc（CF Access JWT 或 `X-Admin-Token`）。

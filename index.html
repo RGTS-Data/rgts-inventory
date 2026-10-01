@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>庫存系統</title>
+<style>body{font:14px system-ui,sans-serif;max-width:1000px;margin:24px auto;padding:0 16px}
+table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #ddd;padding:4px 8px;text-align:left}
+td.n{text-align:right}input{padding:6px}</style></head><body>
+<h2>庫存現況 <small><a href="/import.html">期初匯入</a></small></h2>
+<input id="q" placeholder="搜尋料號/品名"> <select id="wh"><option value="">全部倉</option><option>Z</option><option>HR</option><option>RD</option><option>O</option></select>
+<table><thead><tr><th>料號</th><th>品名規格</th><th>倉</th><th>單位</th><th>現有庫存</th></tr></thead><tbody id="t"></tbody></table>
+<script src="/_lib/auth.js"></script>
+<script>
+var esc=function(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})};
+async function load(){
+  await INVAuth.tryAutoLogin&&INVAuth.tryAutoLogin();
+  var u='/api/stock/list?limit=300&q='+encodeURIComponent(q.value)+'&wh='+encodeURIComponent(wh.value)+'&_='+Date.now();
+  var d=await (await INVAuth.authedFetch(u)).json();
+  t.innerHTML=(d.rows||[]).map(function(r){return'<tr><td>'+esc(r.part_no)+'</td><td>'+esc(r.name)+'</td><td>'+esc(r.wh_code)+'</td><td>'+esc(r.unit)+'</td><td class=n>'+esc(r.qty)+'</td></tr>'}).join('')||'<tr><td colspan=5>沒有資料（先到「期初匯入」）</td></tr>';
+}
+var t=document.getElementById('t'),q=document.getElementById('q'),wh=document.getElementById('wh'),tm;
+q.oninput=function(){clearTimeout(tm);tm=setTimeout(load,250)};wh.onchange=load;load();
+</script></body></html>
