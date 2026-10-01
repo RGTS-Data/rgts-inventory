@@ -13,21 +13,12 @@
 import { requireAuth } from '../_lib/auth.js';
 import { ok, err } from '../_lib/json.js';
 import { nowIso } from '../_lib/util.js';
-import { getAccessToken } from '../_lib/google-auth.js';
+import { readStockSheet } from '../_lib/sheet.js';
 import { cleanRows, loadOld, buildStmts, importLogStmt } from '../_lib/stock-upsert.js';
 
-const DEFAULT_SHEET_ID = '1kAn9iVPWlX2qi0oaH_oEuh9QT44BaaVYXRAAKIZF2uc'; // 庫存表
-const SCOPE = 'https://www.googleapis.com/auth/spreadsheets.readonly';
-const COLS = { part_no: '產品編號', name: '品名規格', unit: '單位', wh_code: '倉庫編號',
-  wh_name: '倉庫名稱', qty: '現有庫存', borrow_in: '借入數量', borrow_out: '借出數量' };
 const ROWS_PER_BATCH = 100; // 每個 D1 batch 最多 ~200 句（upsert＋可能的 adjust）
 
-// 分頁挑選：名稱是純數字的取最大；都不是純數字就取第一個
-export function pickTab(titles) {
-  const nums = titles.filter((t) => /^\d+$/.test(String(t).trim()));
-  if (nums.length) return nums.sort((a, b) => Number(b) - Number(a))[0];
-  return titles[0];
-}
+export { pickTab } from '../_lib/sheet.js';
 
 async function logFail(env, batch, why, email) {
   try {
@@ -44,7 +35,6 @@ export async function onRequestPost({ request, env }) {
   const force = sp.get('force') === '1';
   const batch = 'sync-' + nowIso();
   const email = user.email;
-  if (!env.SA_EMAIL || !env.SA_PRIVATE_KEY) return err('SA_EMAIL / SA_PRIVATE_KEY 未設定', 500);
   if (!force) {
     const on = await env.DB.prepare(
       `SELECT COUNT(*) AS n, MIN(ts) AS first_ts FROM inv_moves WHERE type IN ('receipt','issue')`
@@ -57,42 +47,21 @@ export async function onRequestPost({ request, env }) {
         { code: 'online_started', moves: Number(on.n), first_ts: on.first_ts });
     }
   }
-  const sheetId = env.INV_SHEET_ID || DEFAULT_SHEET_ID;
 
-  let tab, values;
+  let tab, raw, missing;
   try {
-    const token = await getAccessToken(env.SA_EMAIL, env.SA_PRIVATE_KEY, SCOPE);
-    const H = { Authorization: `Bearer ${token}` };
-    const meta = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}?fields=sheets.properties.title`, { headers: H });
-    if (!meta.ok) throw new Error(`讀取分頁清單失敗 HTTP ${meta.status}`);
-    const titles = ((await meta.json()).sheets || []).map((s) => s.properties.title);
-    tab = pickTab(titles);
-    if (!tab) throw new Error('試算表沒有分頁');
-    const range = encodeURIComponent(`'${tab.replace(/'/g, "''")}'`);
-    const vr = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}?valueRenderOption=FORMATTED_VALUE`, { headers: H });
-    if (!vr.ok) throw new Error(`讀取分頁 ${tab} 失敗 HTTP ${vr.status}`);
-    values = (await vr.json()).values || [];
+    ({ tab, raw, missing } = await readStockSheet(env));
   } catch (e) {
     if (!dry) await logFail(env, batch, e.message, email);
     return err(e.message, 502);
   }
-
-  const header = (values[0] || []).map((h) => String(h).trim());
-  const idx = {};
-  for (const [k, label] of Object.entries(COLS)) idx[k] = header.indexOf(label);
-  const missing = Object.entries(idx).filter(([k, i]) => i < 0 && ['part_no', 'wh_code', 'qty'].includes(k)).map(([k]) => COLS[k]);
   if (missing.length) {
     if (!dry) await logFail(env, batch, '缺欄位 ' + missing.join('/'), email);
     return err(`分頁 ${tab} 找不到欄位：${missing.join('、')}`, 422);
   }
-  const raw = values.slice(1).map((r) => {
-    const o = {};
-    for (const [k, i] of Object.entries(idx)) o[k] = i >= 0 ? r[i] : '';
-    return o;
-  });
   const list = cleanRows(raw);
   // 對帳用：Sheet 列數 ≠ 寫入列數時，要分得出是空白列、缺料號/倉庫，還是同料號同倉重複
-  const blank = raw.filter((o) => Object.values(o).every((v) => String(v ?? '').trim() === '')).length;
+  const blank = raw.filter((o) => Object.entries(o).every(([k, v]) => k === '_row' || String(v ?? '').trim() === '')).length;
   const noKey = raw.filter((o) => !String(o.part_no ?? '').trim() || !String(o.wh_code ?? '').trim()).length - blank;
   const stats = { sheet_rows: raw.length, blank, no_key: noKey, merged_dup: raw.length - blank - noKey - list.length };
   if (!list.length) {
