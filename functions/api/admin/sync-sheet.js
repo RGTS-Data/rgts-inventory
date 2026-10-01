@@ -6,6 +6,9 @@
 // - dry=1：只回「會寫幾列、幾列數量有變」，不寫入
 // - 觸發：首頁按鈕（CF Access JWT）或 status-update-worker 每週排程（X-Admin-Token）
 //   ⚠ /api/admin/* 在 CF Access 走 Bypass（排程打得進來），所以這支一定要 requireAuth。
+// - ⛔ 一旦有線上進料/領料（inv_moves 有 receipt/issue）就自動停止覆蓋（Chris 2026-10-01 選 a）：
+//   覆蓋會把線上進出的數字蓋回 Excel 值。排程永遠不帶 force → 從那天起每週同步自動跳過（留 sync-skip 紀錄）。
+//   真的要再覆蓋（例：線上只是測試）→ 首頁按鈕會二次確認後帶 force=1。
 // - 成功/失敗都寫一筆 inv_imports（source='sheet:<分頁>' 或 'sheet-fail:<原因>'），排錯用。
 import { requireAuth } from '../_lib/auth.js';
 import { ok, err } from '../_lib/json.js';
@@ -36,10 +39,24 @@ export async function onRequestPost({ request, env }) {
   const { user, failed } = requireAuth(request, env);
   if (failed) return failed;
   if (!env.DB) return err('DB binding missing', 500);
-  const dry = new URL(request.url).searchParams.get('dry') === '1';
+  const sp = new URL(request.url).searchParams;
+  const dry = sp.get('dry') === '1';
+  const force = sp.get('force') === '1';
   const batch = 'sync-' + nowIso();
   const email = user.email;
   if (!env.SA_EMAIL || !env.SA_PRIVATE_KEY) return err('SA_EMAIL / SA_PRIVATE_KEY 未設定', 500);
+  if (!force) {
+    const on = await env.DB.prepare(
+      `SELECT COUNT(*) AS n, MIN(ts) AS first_ts FROM inv_moves WHERE type IN ('receipt','issue')`
+    ).first();
+    if (Number(on?.n) > 0) {
+      if (!dry) {
+        await importLogStmt(env, { batch, ts: nowIso(), source: 'sync-skip:已線上進出料', rows: 0, email }).run();
+      }
+      return err(`已開始線上進出料（${on.n} 筆，最早 ${String(on.first_ts).slice(0, 10)}），覆蓋同步已停止`, 409,
+        { code: 'online_started', moves: Number(on.n), first_ts: on.first_ts });
+    }
+  }
   const sheetId = env.INV_SHEET_ID || DEFAULT_SHEET_ID;
 
   let tab, values;
