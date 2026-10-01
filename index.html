@@ -210,16 +210,21 @@ tfoot td{position:sticky;bottom:0;background:var(--hd);font-weight:bold}
   }
 
   // ── Google Sheet 同步（先試算、確認後才寫）
-  async function post(u){var r=await INVAuth.authedFetch(u,{method:'POST'});var d={};try{d=await r.json()}catch(e){}if(!r.ok||!d.ok)throw new Error(d.error||('HTTP '+r.status));return d}
+  async function post(u){var r=await INVAuth.authedFetch(u,{method:'POST'});var d={};try{d=await r.json()}catch(e){}if(!r.ok||!d.ok){var x=new Error(d.error||('HTTP '+r.status));x.code=d.code;throw x}return d}
   function statText(d){return'Sheet 共 '+d.sheet_rows+' 列 → 寫入 '+d.rows+' 列'+
     '（空白列 '+d.blank+'、缺料號或倉庫 '+d.no_key+'、同料號同倉重複合併 '+d.merged_dup+'）'}
   async function last(){try{var d=await (await INVAuth.authedFetch('/api/admin/last-sync?_='+Date.now())).json();
     $('last').textContent='最近同步：'+(d.rows||[]).map(function(x){return String(x.ts).slice(0,16).replace('T',' ')+' '+x.source+'（'+x.row_count+' 列）'}).join('；')}catch(e){}}
   $('sync').onclick=async function(){
     var m=$('syncmsg'),btn=this;btn.disabled=true;
-    try{m.textContent='試算中…';var d=await post('/api/admin/sync-sheet?dry=1');
+    try{m.textContent='試算中…';var force='',d;
+      try{d=await post('/api/admin/sync-sheet?dry=1')}catch(e){
+        if(e.code!=='online_started')throw e;
+        // 已線上進出料：覆蓋會把線上數字蓋掉 → 二次確認（打 OVERWRITE）才放行
+        if(prompt(e.message+'\n\n再覆蓋會把線上進料/領料後的數字改回 Excel 的值（差額仍記在流水帳）。\n確定要覆蓋請輸入 OVERWRITE：')!=='OVERWRITE'){m.textContent='已取消';return}
+        force='&force=1';d=await post('/api/admin/sync-sheet?dry=1'+force)}
       if(!confirm('分頁「'+d.tab+'」\n'+statText(d)+'\n其中 '+d.changed+' 列數量會變（新增 '+d.added+' 列）。\n\n以這份「覆蓋」庫存？')){m.textContent='已取消';return}
-      m.textContent='同步中，約需數十秒，請勿關閉…';d=await post('/api/admin/sync-sheet');
+      m.textContent='同步中，約需數十秒，請勿關閉…';d=await post('/api/admin/sync-sheet'+(force?'?force=1':''));
       m.textContent='完成：'+statText(d)+'；'+d.adjusted+' 列數量有變（已寫流水帳）';load();last();
     }catch(e){m.textContent='失敗：'+e.message}finally{btn.disabled=false}};
 
