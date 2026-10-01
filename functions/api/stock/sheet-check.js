@@ -19,15 +19,32 @@ export async function onRequestGet({ request, env }) {
     (groups.get(k) || groups.set(k, []).get(k)).push(r);
   }
   const dups = [...groups.entries()].filter(([, rows]) => rows.length > 1);
-  const sig = (r) => JSON.stringify([r.name, r.unit, r.wh_name, r.qty, r.borrow_in, r.borrow_out]);
+  // 數字一律轉成數值再比（"400.00" 與 "400" 是同一個數，不能算不同）
+  const n = (v) => { const x = Number(String(v ?? '').replace(/,/g, '')); return Number.isFinite(x) ? x : 0; };
+  const sig = (r) => JSON.stringify([String(r.name ?? '').trim(), n(r.qty), n(r.borrow_in), n(r.borrow_out)]);
   const identical = dups.filter(([, rows]) => rows.every((r) => sig(r) === sig(rows[0]))).length;
-  const qtyDiffer = dups.filter(([, rows]) => new Set(rows.map((r) => String(r.qty))).size > 1).length;
+  const differ = dups.filter(([, rows]) => new Set(rows.map((r) => n(r.qty))).size > 1);
   const extraRowNos = dups.flatMap(([, rows]) => rows.slice(1).map((r) => r._row)).sort((a, b) => a - b);
+  // 區塊判斷：是不是「前一段、後一段」兩份匯出疊在一起
+  const split = extraRowNos[0] || 0;
+  const firstHalf = s.raw.filter((r) => r._row < split).length;
+  const secondHalf = s.raw.filter((r) => r._row >= split).length;
+  const crossBlock = dups.filter(([, rows]) => rows.some((r) => r._row < split) && rows.some((r) => r._row >= split)).length;
+  const sameBlock = dups.length - crossBlock;
+  // 數量不同時，前段 vs 後段誰大
+  let laterBigger = 0, laterSmaller = 0;
+  for (const [, rows] of differ) {
+    const a = rows.filter((r) => r._row < split).reduce((t, r) => t + n(r.qty), 0);
+    const b = rows.filter((r) => r._row >= split).reduce((t, r) => t + n(r.qty), 0);
+    if (b > a) laterBigger++; else if (b < a) laterSmaller++;
+  }
   return ok({
-    tab: s.tab, titles: s.titles, header: s.header, sheet_rows: s.raw.length,
+    tab: s.tab, titles: s.titles, sheet_rows: s.raw.length,
     dup_groups: dups.length, dup_extra_rows: extraRowNos.length,
-    identical_groups: identical, qty_differ_groups: qtyDiffer,
-    first_extra_row: extraRowNos[0] || null, last_extra_row: extraRowNos[extraRowNos.length - 1] || null,
-    examples: dups.slice(0, 25).map(([k, rows]) => ({ key: k, rows })),
+    identical_groups: identical, qty_differ_groups: differ.length,
+    split_row: split || null, rows_before_split: firstHalf, rows_from_split: secondHalf,
+    groups_across_blocks: crossBlock, groups_within_one_block: sameBlock,
+    differ_later_bigger: laterBigger, differ_later_smaller: laterSmaller,
+    differ_examples: differ.slice(0, 20).map(([k, rows]) => ({ key: k, rows: rows.map((r) => ({ row: r._row, name: r.name, qty: r.qty, wh: r.wh_name })) })),
   });
 }
