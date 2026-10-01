@@ -1,34 +1,229 @@
 <!doctype html>
 <html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>庫存系統</title>
-<style>body{font:14px system-ui,sans-serif;max-width:1000px;margin:24px auto;padding:0 16px}
-table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #ddd;padding:4px 8px;text-align:left}
-td.n{text-align:right}input{padding:6px}</style></head><body>
-<h2>庫存現況 <small><a href="/import.html">期初匯入</a></small></h2>
-<p><button id="sync">🔄 從 Google Sheet「庫存表」同步</button> <span id="syncmsg"></span></p>
-<p id="last" style="color:#666;font-size:12px"></p>
-<input id="q" placeholder="搜尋料號/品名"> <select id="wh"><option value="">全部倉</option><option>Z</option><option>HR</option><option>RD</option><option>O</option></select>
-<table><thead><tr><th>料號</th><th>品名規格</th><th>倉</th><th>單位</th><th>現有庫存</th></tr></thead><tbody id="t"></tbody></table>
+<title>庫存總表</title>
+<style>
+:root{--bd:#d9d9d9;--hd:#f3f5f8;--hi:#fff8d6;--ac:#2563eb}
+*{box-sizing:border-box}
+body{font:13px system-ui,-apple-system,"Microsoft JhengHei",sans-serif;margin:0;padding:12px 16px;color:#222;background:#fff}
+h2{margin:4px 0 8px;font-size:18px}
+h2 small{font-weight:normal;font-size:13px;margin-left:8px}
+.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px}
+.bar input[type=search]{padding:5px 8px;width:220px;border:1px solid var(--bd);border-radius:4px}
+button{padding:5px 10px;border:1px solid #bbb;border-radius:4px;background:#fff;cursor:pointer;font:inherit}
+button:hover{background:#f2f2f2}
+#syncmsg{color:#555}#last{color:#888;font-size:12px}
+.wrap{overflow:auto;max-height:calc(100vh - 150px);border:1px solid var(--bd)}
+table{border-collapse:separate;border-spacing:0;table-layout:fixed}
+th,td{border-right:1px solid var(--bd);border-bottom:1px solid var(--bd);padding:3px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+thead th{position:sticky;top:0;background:var(--hd);z-index:2;text-align:left;user-select:none}
+th .lbl{cursor:pointer}th .lbl:hover{color:var(--ac)}
+th .fb{float:right;border:0;background:none;padding:0 2px;color:#888;cursor:pointer}
+th .fb.on{color:#fff;background:var(--ac);border-radius:3px}
+th .rs{position:absolute;right:-3px;top:0;bottom:0;width:7px;cursor:col-resize;z-index:3}
+th{position:sticky}
+td.n,th.n{text-align:right}
+td:first-child,th:first-child{position:sticky;left:0;background:#fff;z-index:1}
+thead th:first-child{z-index:4;background:var(--hd)}
+tbody tr:hover td{background:var(--hi)}
+tfoot td{position:sticky;bottom:0;background:var(--hd);font-weight:bold}
+.vm{position:absolute;z-index:50;background:#fff;border:1px solid #bbb;box-shadow:0 4px 16px rgba(0,0,0,.15);border-radius:6px;width:280px;padding:8px}
+.vm .vmh{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.vm .vmact button{padding:2px 6px;font-size:12px}
+.vm input{width:100%;padding:4px 6px;margin-bottom:6px;border:1px solid var(--bd);border-radius:4px}
+.vm .vml{max-height:300px;overflow:auto;border-top:1px solid #eee;padding-top:4px}
+.vm label{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:1px 0}
+.vm .note{color:#888;font-size:12px;margin:4px 0}
+.vm .ft{display:flex;justify-content:flex-end;gap:6px;margin-top:6px}
+.empty{padding:20px;color:#888}
+</style></head><body>
+<script src="/_lib/nav.js"></script>
+<h2>庫存總表</h2>
+<div class="bar">
+  <input id="q" type="search" placeholder="搜尋料號 / 品名">
+  <button id="clr">✕ 清除所有篩選</button>
+  <button id="xls">📊 匯出 Excel</button>
+  <button id="cw">↔ 欄寬重設</button>
+  <button id="sync">🔄 從 Google Sheet「庫存表」同步</button>
+  <span id="syncmsg"></span>
+</div>
+<div id="last"></div>
+<div class="wrap"><table id="tb"><colgroup id="cg"></colgroup><thead id="th"></thead><tbody id="bd"></tbody><tfoot id="tf"></tfoot></table></div>
+
 <script src="/_lib/auth.js"></script>
+<script src="/_lib/xlsx.js"></script>
 <script>
-var esc=function(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})};
-async function load(){
-  await INVAuth.tryAutoLogin&&INVAuth.tryAutoLogin();
-  var u='/api/stock/list?limit=300&q='+encodeURIComponent(q.value)+'&wh='+encodeURIComponent(wh.value)+'&_='+Date.now();
-  var d=await (await INVAuth.authedFetch(u)).json();
-  t.innerHTML=(d.rows||[]).map(function(r){return'<tr><td>'+esc(r.part_no)+'</td><td>'+esc(r.name)+'</td><td>'+esc(r.wh_code)+'</td><td>'+esc(r.unit)+'</td><td class=n>'+esc(r.qty)+'</td></tr>'}).join('')||'<tr><td colspan=5>沒有資料（先到「期初匯入」）</td></tr>';
-}
-var t=document.getElementById('t'),q=document.getElementById('q'),wh=document.getElementById('wh'),tm;
-q.oninput=function(){clearTimeout(tm);tm=setTimeout(load,250)};wh.onchange=load;load();
-async function post(u){var r=await INVAuth.authedFetch(u,{method:'POST'});var d={};try{d=await r.json()}catch(e){}if(!r.ok||!d.ok)throw new Error(d.error||('HTTP '+r.status));return d}
-async function last(){try{var d=await (await INVAuth.authedFetch('/api/admin/last-sync?_='+Date.now())).json();
-  document.getElementById('last').textContent='最近同步：'+(d.rows||[]).map(function(x){return x.ts.slice(0,16).replace('T',' ')+' '+x.source+'（'+x.row_count+' 列）'}).join('；')}catch(e){}}
-document.getElementById('sync').onclick=async function(){
-  var m=document.getElementById('syncmsg'),btn=this;btn.disabled=true;
-  try{m.textContent='試算中…';var d=await post('/api/admin/sync-sheet?dry=1');
-    if(!confirm('分頁「'+d.tab+'」共 '+d.rows+' 列，其中 '+d.changed+' 列數量會變（新增 '+d.added+' 列）。\n以這份「覆蓋」庫存？')){m.textContent='已取消';return}
-    m.textContent='同步中，約需數十秒，請勿關閉…';d=await post('/api/admin/sync-sheet');
-    m.textContent='完成：'+d.rows+' 列，'+d.adjusted+' 列數量有變（已寫流水帳）';load();last();
-  }catch(e){m.textContent='失敗：'+e.message}finally{btn.disabled=false}};
-last();
+(function(){
+  // ── 欄位定義（畫面／篩選／排序／匯出共用同一份）
+  var COLS=[
+    {k:'part_no',l:'料號',w:150,t:'s'},
+    {k:'name',l:'品名規格',w:380,t:'s'},
+    {k:'wh_code',l:'倉庫編號',w:80,t:'s'},
+    {k:'wh_name',l:'倉庫名稱',w:100,t:'s'},
+    {k:'unit',l:'單位',w:55,t:'s'},
+    {k:'qty',l:'現有庫存',w:85,t:'n',sum:1},
+    {k:'borrow_in',l:'借入',w:65,t:'n',sum:1},
+    {k:'borrow_out',l:'借出',w:65,t:'n',sum:1},
+    {k:'actual',l:'實際在庫量',w:95,t:'n',sum:1},
+    {k:'updated_at',l:'更新時間',w:130,t:'s'}
+  ];
+  var WKEY='inv_colw', SELECT_CAP=1000;
+  var ROWS=[], FILT={}, SORT={k:null,d:1}, VM=null, vmShowAll=false;
+  var $=function(id){return document.getElementById(id)};
+  var esc=function(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})};
+  var num=function(v){var n=Number(v);return isFinite(n)?n:0};
+  var round=function(n){return Math.round(n*1e6)/1e6};
+  var fmt=function(n){return round(n).toLocaleString('en-US',{maximumFractionDigits:4})};
+  function val(r,k){return r[k]==null?'':r[k]}
+  function sval(r,k){var v=val(r,k);return v===''?'(空白)':String(v)}
+
+  // ── 欄寬（localStorage 記住）
+  function loadW(){try{return JSON.parse(localStorage.getItem(WKEY)||'{}')}catch(e){return{}}}
+  function saveW(m){try{localStorage.setItem(WKEY,JSON.stringify(m))}catch(e){}}
+  var WID=loadW();
+  function colgroup(){
+    var tot=0;$('cg').innerHTML=COLS.map(function(c){var w=WID[c.k]||c.w;tot+=w;return'<col style="width:'+w+'px">'}).join('');
+    $('tb').style.width=tot+'px';
+  }
+
+  // ── 表頭（只建一次；篩選中的欄 ▾ 會變藍）
+  function header(){
+    $('th').innerHTML='<tr>'+COLS.map(function(c,i){
+      var arrow=SORT.k===c.k?(SORT.d>0?' ▲':' ▼'):'';
+      var on=FILT[c.k]?' on':'';
+      return'<th class="'+(c.t==='n'?'n':'')+'" data-i="'+i+'"><span class="lbl" data-sort="'+c.k+'">'+esc(c.l)+arrow+'</span>'+
+        '<button class="fb'+on+'" data-f="'+c.k+'" title="篩選">▾</button><span class="rs" data-rs="'+i+'"></span></th>';
+    }).join('')+'</tr>';
+  }
+
+  // ── 篩選：搜尋框＋每欄勾選值；except 用來算「連動」候選值
+  function pass(r,except){
+    var q=$('q').value.trim().toLowerCase();
+    if(q && (String(r.part_no)+' '+String(r.name)).toLowerCase().indexOf(q)<0) return false;
+    for(var k in FILT){ if(k===except) continue; if(!FILT[k].has(sval(r,k))) return false; }
+    return true;
+  }
+  function cmp(a,b,k,t){
+    var x=val(a,k),y=val(b,k);
+    if(x===''&&y==='')return 0; if(x==='')return 1; if(y==='')return -1;   // 空值沉底
+    return t==='n'?num(x)-num(y):String(x).localeCompare(String(y),'zh-Hant',{numeric:true});
+  }
+  function view(){
+    var list=ROWS.filter(function(r){return pass(r,null)});
+    if(SORT.k){var c=COLS.filter(function(c){return c.k===SORT.k})[0];
+      list.sort(function(a,b){var d=cmp(a,b,c.k,c.t);return(val(a,c.k)===''||val(b,c.k)==='')?d:d*SORT.d});}
+    return list;
+  }
+
+  function render(){
+    var list=view();
+    var html='';
+    for(var i=0;i<list.length;i++){var r=list[i];
+      html+='<tr>'+COLS.map(function(c){var v=val(r,c.k);
+        if(c.k==='updated_at') v=String(v).slice(0,16).replace('T',' ');
+        return'<td class="'+(c.t==='n'?'n':'')+'" title="'+esc(v)+'">'+esc(c.t==='n'&&v!==''?fmt(num(v)):v)+'</td>'}).join('')+'</tr>';}
+    $('bd').innerHTML=html||'<tr><td colspan="'+COLS.length+'" class="empty">'+(ROWS.length?'沒有符合篩選的資料':'尚無資料（按右上「從 Google Sheet 同步」）')+'</td></tr>';
+    // 合計：跟畫面同一份 list，數字收尾一致
+    var sums={};COLS.forEach(function(c){if(c.sum)sums[c.k]=0});
+    list.forEach(function(r){for(var k in sums)sums[k]+=num(r[k])});
+    $('tf').innerHTML='<tr>'+COLS.map(function(c,i){
+      if(i===0)return'<td>顯示 '+list.length+' / '+ROWS.length+'</td>';
+      return'<td class="'+(c.t==='n'?'n':'')+'">'+(c.sum?fmt(sums[c.k]):'')+'</td>'}).join('')+'</tr>';
+  }
+
+  // ── 勾選面板
+  function closeVM(){if(VM){VM.remove();VM=null}}
+  function openVM(k,btn){
+    closeVM();vmShowAll=false;
+    var c=COLS.filter(function(c){return c.k===k})[0];
+    var cand={};ROWS.forEach(function(r){if(pass(r,k))cand[sval(r,k)]=1});
+    var all=Object.keys(cand).sort(function(a,b){
+      if(a==='(空白)')return 1;if(b==='(空白)')return -1;
+      return c.t==='n'?num(a)-num(b):a.localeCompare(b,'zh-Hant',{numeric:true})});
+    var sel=FILT[k]?new Set(FILT[k]):new Set(all);
+    VM=document.createElement('div');VM.className='vm';document.body.appendChild(VM);
+    var rc=btn.getBoundingClientRect();
+    VM.style.left=Math.max(4,Math.min(rc.left+scrollX-240,innerWidth-290))+'px';VM.style.top=(rc.bottom+scrollY+2)+'px';
+    function draw(q){
+      var list=q?all.filter(function(v){return v.toLowerCase().indexOf(q.toLowerCase())>=0}):all;
+      var capped=!vmShowAll&&list.length>SELECT_CAP, shown=capped?list.slice(0,SELECT_CAP):list;
+      VM.innerHTML='<div class="vmh"><b>'+esc(c.l)+'</b><span class="vmact">'+
+        '<button data-a="asc">升冪</button> <button data-a="desc">降冪</button></span></div>'+
+        '<input class="vq" type="search" placeholder="搜尋值…" value="'+esc(q||'')+'">'+
+        '<div><button data-a="all">全選</button> <button data-a="none">清除</button></div>'+
+        (capped?'<div class="note">共 '+list.length+' 種，只列前 '+SELECT_CAP+'，<a href="#" data-a="showall">顯示全部</a>（或打字縮小）</div>':'')+
+        '<div class="vml">'+(shown.map(function(v){return'<label><input type="checkbox" value="'+esc(v)+'"'+(sel.has(v)?' checked':'')+'> '+esc(v)+'</label>'}).join('')||'<div class="note">沒有符合的值</div>')+'</div>'+
+        '<div class="ft"><button data-a="cancel">取消</button><button data-a="ok"><b>確定</b></button></div>';
+      var qi=VM.querySelector('.vq');qi.focus();qi.setSelectionRange(qi.value.length,qi.value.length);
+      qi.oninput=function(){draw(qi.value)};
+      VM.querySelectorAll('.vml input').forEach(function(cb){cb.onchange=function(){cb.checked?sel.add(cb.value):sel.delete(cb.value)}});
+      VM.onclick=function(e){var a=e.target.closest('[data-a]');if(!a)return;e.preventDefault();var act=a.dataset.a,cur=qi.value;
+        // 全選/清除：有打搜尋字時只作用在符合的值；沒打字＝全部候選值
+        var tgt=cur?all.filter(function(v){return v.toLowerCase().indexOf(cur.toLowerCase())>=0}):all;
+        if(act==='all'){tgt.forEach(function(v){sel.add(v)});draw(cur)}
+        else if(act==='none'){tgt.forEach(function(v){sel.delete(v)});draw(cur)}
+        else if(act==='showall'){vmShowAll=true;draw(cur)}
+        else if(act==='asc'||act==='desc'){SORT={k:k,d:act==='asc'?1:-1};closeVM();header();render()}
+        else if(act==='cancel'){closeVM()}
+        else if(act==='ok'){
+          if(all.every(function(v){return sel.has(v)}))delete FILT[k];else FILT[k]=sel;
+          closeVM();header();render()}
+      };
+    }
+    draw('');
+  }
+
+  // ── 表頭事件：排序（升→降→取消）、開面板、拖欄寬
+  $('th').addEventListener('click',function(e){
+    var f=e.target.closest('[data-f]');if(f){e.stopPropagation();openVM(f.dataset.f,f);return}
+    var s=e.target.closest('[data-sort]');if(!s)return;var k=s.dataset.sort;
+    if(SORT.k!==k)SORT={k:k,d:1};else if(SORT.d>0)SORT.d=-1;else SORT={k:null,d:1};
+    header();render();
+  });
+  $('th').addEventListener('mousedown',function(e){
+    var h=e.target.closest('[data-rs]');if(!h)return;e.preventDefault();
+    var i=+h.dataset.rs,c=COLS[i],x0=e.clientX,w0=WID[c.k]||c.w;
+    function mv(ev){WID[c.k]=Math.max(40,w0+ev.clientX-x0);colgroup()}
+    function up(){document.removeEventListener('mousemove',mv);document.removeEventListener('mouseup',up);saveW(WID)}
+    document.addEventListener('mousemove',mv);document.addEventListener('mouseup',up);
+  });
+  document.addEventListener('mousedown',function(e){if(VM&&!VM.contains(e.target)&&!e.target.closest('[data-f]'))closeVM()});
+  var tm;$('q').oninput=function(){clearTimeout(tm);tm=setTimeout(render,200)};
+  $('clr').onclick=function(){FILT={};SORT={k:null,d:1};$('q').value='';header();render()};
+  $('cw').onclick=function(){WID={};saveW(WID);colgroup()};
+
+  // ── 匯出：所見即所得（篩選＋排序後的列、同一份欄位）
+  $('xls').onclick=function(){
+    var list=view(),rows=[COLS.map(function(c){return c.l})];
+    list.forEach(function(r){rows.push(COLS.map(function(c){var v=val(r,c.k);return c.k==='updated_at'?String(v).slice(0,16).replace('T',' '):v}))});
+    var d=new Date(),ts=d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0');
+    INVXlsx.download('庫存總表_'+ts+'.xlsx',{sheet:'庫存總表',rows:rows,
+      widths:COLS.map(function(c){return Math.round((WID[c.k]||c.w)/7)}),
+      textCols:[0,2,3]});   // 料號／倉庫別被 Excel 轉成數字（會掉前導 0）
+  };
+
+  // ── 載入
+  async function load(){
+    var d=await (await INVAuth.authedFetch('/api/stock/list?limit=20000&_='+Date.now())).json();
+    if(!d.ok){$('bd').innerHTML='<tr><td class="empty" colspan="'+COLS.length+'">讀取失敗：'+esc(d.error||'')+'</td></tr>';return}
+    ROWS=(d.rows||[]).map(function(r){r.actual=round(num(r.qty)+num(r.borrow_in)-num(r.borrow_out));return r});
+    render();
+  }
+
+  // ── Google Sheet 同步（先試算、確認後才寫）
+  async function post(u){var r=await INVAuth.authedFetch(u,{method:'POST'});var d={};try{d=await r.json()}catch(e){}if(!r.ok||!d.ok)throw new Error(d.error||('HTTP '+r.status));return d}
+  function statText(d){return'Sheet 共 '+d.sheet_rows+' 列 → 寫入 '+d.rows+' 列'+
+    '（空白列 '+d.blank+'、缺料號或倉庫 '+d.no_key+'、同料號同倉重複合併 '+d.merged_dup+'）'}
+  async function last(){try{var d=await (await INVAuth.authedFetch('/api/admin/last-sync?_='+Date.now())).json();
+    $('last').textContent='最近同步：'+(d.rows||[]).map(function(x){return String(x.ts).slice(0,16).replace('T',' ')+' '+x.source+'（'+x.row_count+' 列）'}).join('；')}catch(e){}}
+  $('sync').onclick=async function(){
+    var m=$('syncmsg'),btn=this;btn.disabled=true;
+    try{m.textContent='試算中…';var d=await post('/api/admin/sync-sheet?dry=1');
+      if(!confirm('分頁「'+d.tab+'」\n'+statText(d)+'\n其中 '+d.changed+' 列數量會變（新增 '+d.added+' 列）。\n\n以這份「覆蓋」庫存？')){m.textContent='已取消';return}
+      m.textContent='同步中，約需數十秒，請勿關閉…';d=await post('/api/admin/sync-sheet');
+      m.textContent='完成：'+statText(d)+'；'+d.adjusted+' 列數量有變（已寫流水帳）';load();last();
+    }catch(e){m.textContent='失敗：'+e.message}finally{btn.disabled=false}};
+
+  colgroup();header();
+  INVAuth.tryAutoLogin().then(function(){load();last()});
+})();
 </script></body></html>

@@ -225,5 +225,6 @@ RGTS 庫存系統：進料／領料／扣帳，連動 bom-tool 採購總表。Cl
 
 ## 架構
 - 只**唯讀** `purchase_orders` / `purchase_lines` / `projects`；只寫自己的 `inv_*` 表（`migrations/0001_inventory.sql`）。
-- `functions/api/`：`stock/list`、`import/stock`（Excel 期初覆蓋）、`receipt/gate`（發票金額核對）、`receipt/post`（進料）、`issue/post`（以專案領料）、`moves/list`。
+- 頁面：`/` 庫存總表、`/receipt.html` 進料、`/issue.html` 領料、`/moves.html` 流水帳、`/import.html` Excel 匯入。
+- `functions/api/`：`stock/list`、`import/stock`、`admin/sync-sheet`（Google Sheet 同步）、`admin/last-sync`、`receipt/{lines,gate,post}`、`issue/{project,post}`、`moves/list`。
 - 認證模型同 rgts-pmc（CF Access JWT 或 `X-Admin-Token`）。

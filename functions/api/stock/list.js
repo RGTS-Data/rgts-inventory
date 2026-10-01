@@ -9,7 +9,8 @@ export async function onRequestGet({ request, env }) {
   const u = new URL(request.url);
   const q = (u.searchParams.get('q') || '').trim();
   const wh = (u.searchParams.get('wh') || '').trim();
-  const limit = Math.min(Number(u.searchParams.get('limit')) || 200, 1000);
+  // 清單頁一次撈全部（目前 ~4k 列）做前端篩選/排序；上限 20000 防呆
+  const limit = Math.min(Number(u.searchParams.get('limit')) || 200, 20000);
   const where = [];
   const bind = [];
   if (q) { where.push('(part_no LIKE ? OR name LIKE ?)'); bind.push(`%${q}%`, `%${q}%`); }

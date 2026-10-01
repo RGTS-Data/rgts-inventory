@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>專案領料</title><link rel="stylesheet" href="/_lib/app.css"></head><body>
+<script src="/_lib/nav.js"></script>
+<h2>專案領料（扣帳）</h2>
+<div class="bar">
+  <input id="pj" placeholder="專案號，例 3509-5 或 3509(5)" style="width:220px">
+  <button id="go" class="pri">載入 BOM</button>
+  <span id="info" class="muted"></span>
+</div>
+<div id="msg" class="msg"></div>
+<table><thead><tr>
+  <th>料號</th><th>品名規格</th><th class="n">BOM 需求</th><th class="n">已領</th><th class="n">尚需</th><th>庫存（倉:量）</th><th>本次領料</th>
+</tr></thead><tbody id="bd"><tr><td colspan="7" class="muted">輸入專案號載入現行 BOM</td></tr></tbody></table>
+<h3 style="margin-top:20px">BOM 以外的料</h3>
+<div class="bar">
+  <input id="xp" placeholder="料號" style="width:180px"><input id="xq" class="q" placeholder="數量">
+  <select id="xw"><option>Z</option><option>HR</option><option>RD</option><option>O</option></select>
+  <button id="xgo">領料</button>
+</div>
+<script src="/_lib/auth.js"></script>
+<script>
+var $=function(i){return document.getElementById(i)};
+var esc=function(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})};
+var PJ='';
+function msg(t,cls){$('msg').className='msg '+(cls||'');$('msg').textContent=t}
+async function api(u,body){var r=await INVAuth.authedFetch(u,body?{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}:{});
+  var d={};try{d=await r.json()}catch(e){} if(!r.ok||!d.ok)throw new Error(d.error||('HTTP '+r.status));return d}
+async function load(){
+  msg('載入中…');
+  try{var d=await api('/api/issue/project?project_no='+encodeURIComponent($('pj').value)+'&_='+Date.now());
+    PJ=d.project_no;
+    $('info').textContent=d.bom?('專案 '+PJ+'｜'+(d.bom.model||'')+'｜台數 '+(d.bom.units||'?')+'｜'+d.rows.length+' 項'):('專案 '+PJ+' 找不到現行 BOM（仍可用下方「BOM 以外的料」領料）');
+    $('bd').innerHTML=d.rows.map(function(r,i){
+      var left=Math.max(0,Math.round((r.need-r.issued)*1e6)/1e6);
+      var best=(r.stock.slice().sort(function(a,b){return b.qty-a.qty})[0]||{wh:'Z'}).wh;
+      var whs=r.stock.length?r.stock.map(function(s){return s.wh+':'+s.qty}).join('　'):'<span class="err">無庫存</span>';
+      return '<tr><td>'+esc(r.part_no)+(r.spare?' <span class="tag wait">含補料</span>':'')+'</td><td>'+esc(r.name)+'<div class="muted">'+esc(r.spec||'')+'</div></td>'+
+        '<td class="n">'+r.need+'</td><td class="n">'+r.issued+'</td><td class="n">'+left+'</td><td>'+whs+'</td>'+
+        '<td>'+(left>0?'<input class="q" data-i="'+i+'" value="'+Math.min(left,r.on_hand>0?r.on_hand:left)+'"> <select data-w="'+i+'">'+
+          ['Z','HR','RD','O'].concat(r.stock.map(function(s){return s.wh})).filter(function(v,j,a){return a.indexOf(v)===j}).map(function(w){return'<option'+(w===best?' selected':'')+'>'+esc(w)+'</option>'}).join('')+
+          '</select> <button data-go="'+i+'" data-p="'+esc(r.part_no)+'">領料</button>':'<span class="tag ok">已領足</span>')+'</td></tr>';
+    }).join('')||'<tr><td colspan="7" class="muted">BOM 沒有需要領的料</td></tr>';
+    msg('');
+  }catch(e){msg(e.message,'err')}
+}
+async function issue(part,qty,wh,btn){
+  if(!PJ){msg('請先輸入專案號並載入','err');return}
+  if(!(qty>0)){msg('數量要大於 0','err');return}
+  if(!confirm('專案 '+PJ+' 領料：'+part+' ×'+qty+'（倉 '+wh+'）？'))return;
+  if(btn)btn.disabled=true;
+  try{await api('/api/issue/post',{project_no:PJ,part_no:part,qty:qty,wh_code:wh});msg('已扣帳：'+part+' ×'+qty+'（'+wh+'）','good');load();}
+  catch(e){msg(e.message,'err');if(btn)btn.disabled=false}
+}
+$('go').onclick=load;$('pj').onkeydown=function(e){if(e.key==='Enter')load()};
+$('bd').onclick=function(e){var b=e.target.closest('[data-go]');if(!b)return;var i=b.dataset.go;
+  issue(b.dataset.p,Number(document.querySelector('[data-i="'+i+'"]').value),document.querySelector('[data-w="'+i+'"]').value,b)};
+$('xgo').onclick=function(){if(!PJ)PJ=$('pj').value.trim();issue($('xp').value.trim(),Number($('xq').value),$('xw').value,this)};
+INVAuth.tryAutoLogin();
+</script></body></html>
