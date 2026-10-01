@@ -1,0 +1,12 @@
+name = "rgts-inventory"
+compatibility_date = "2024-11-01"
+pages_build_output_dir = "."
+
+# 共用 rgts-pi-db：唯讀 purchase_orders/purchase_lines/projects/bom_items，只寫自己的 inv_* 表
+[[d1_databases]]
+binding = "DB"
+database_name = "rgts-pi-db"
+database_id = "d3258a85-7b6b-4d45-b4c0-5d2fa4946ed5"
+
+# ⚠ Pages env（ADMIN_TOKEN、GATE_EMAILS、INV_WRITEBACK）在 Cloudflare dashboard 設，不進 repo。
+# ⚠ D1 binding 在 Pages dashboard 也要綁 Production + Preview。
