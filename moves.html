@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>異動流水帳</title><link rel="stylesheet" href="/_lib/app.css"></head><body>
+<script src="/_lib/nav.js"></script>
+<h2>異動流水帳</h2>
+<div class="bar">
+  <input id="part" placeholder="料號"><input id="proj" placeholder="專案號">
+  <select id="type"><option value="">全部類型</option><option value="receipt">進料</option><option value="issue">領料</option><option value="import_adjust">匯入覆蓋差額</option></select>
+  <button id="go" class="pri">查詢</button><span id="info" class="muted"></span>
+</div>
+<table><thead><tr><th>時間</th><th>類型</th><th>料號</th><th>倉</th><th class="n">異動</th><th class="n">異動後</th><th>專案</th><th>採購明細 / 發票</th><th>備註</th><th>操作人</th></tr></thead>
+<tbody id="bd"></tbody></table>
+<script src="/_lib/auth.js"></script>
+<script>
+var $=function(i){return document.getElementById(i)};
+var esc=function(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})};
+var T={receipt:'<span class="tag ok">進料</span>',issue:'<span class="tag bad">領料</span>',import_adjust:'<span class="tag wait">匯入</span>'};
+async function load(){
+  var u='/api/moves/list?limit=500&part='+encodeURIComponent($('part').value.trim())+'&project='+encodeURIComponent($('proj').value.trim())+'&type='+$('type').value+'&_='+Date.now();
+  var d=await (await INVAuth.authedFetch(u)).json();
+  $('info').textContent=(d.rows||[]).length+' 筆（最新 500 筆）';
+  $('bd').innerHTML=(d.rows||[]).map(function(r){
+    return '<tr><td>'+esc(String(r.ts).slice(0,16).replace('T',' '))+'</td><td>'+(T[r.type]||esc(r.type))+'</td><td>'+esc(r.part_no)+'</td><td>'+esc(r.wh_code)+'</td>'+
+      '<td class="n '+(r.qty_delta<0?'err':'good')+'">'+(r.qty_delta>0?'+':'')+esc(r.qty_delta)+'</td><td class="n">'+esc(r.qty_after)+'</td><td>'+esc(r.project_no||'')+'</td>'+
+      '<td>'+(r.po_line_id?'#'+esc(r.po_line_id)+(r.invoice_no?' / '+esc(r.invoice_no):''):'')+'</td><td>'+esc(r.note||'')+'</td><td class="muted">'+esc(r.created_by||'')+'</td></tr>';
+  }).join('')||'<tr><td colspan="10" class="muted">沒有紀錄</td></tr>';
+}
+$('go').onclick=load;['part','proj'].forEach(function(i){$(i).onkeydown=function(e){if(e.key==='Enter')load()}});
+INVAuth.tryAutoLogin().then(load);
+</script></body></html>

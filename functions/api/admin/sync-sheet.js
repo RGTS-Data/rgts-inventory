@@ -1,6 +1,8 @@
 // POST /api/admin/sync-sheet[?dry=1]  從 Google Sheet「庫存表」同步庫存（覆蓋）
 // - 讀「名稱最大」的分頁（分頁名＝日期 YYMMDD，最大＝最新；Chris 2026-10-01 選 b）
 // - 用 Sheets API v4 拿 JSON（不必解 xlsx），表頭按名稱對欄，不靠欄位位置
+//   ⚠ 用 FORMATTED_VALUE（看到什麼拿什麼）：純數字料號（0110300853）若是數值格，UNFORMATTED 會掉前導 0；
+//     數量的千分位 / "3.00" 由 cleanRows 的 num() 處理。
 // - dry=1：只回「會寫幾列、幾列數量有變」，不寫入
 // - 觸發：首頁按鈕（CF Access JWT）或 status-update-worker 每週排程（X-Admin-Token）
 //   ⚠ /api/admin/* 在 CF Access 走 Bypass（排程打得進來），所以這支一定要 requireAuth。
@@ -50,7 +52,7 @@ export async function onRequestPost({ request, env }) {
     tab = pickTab(titles);
     if (!tab) throw new Error('試算表沒有分頁');
     const range = encodeURIComponent(`'${tab.replace(/'/g, "''")}'`);
-    const vr = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}?valueRenderOption=UNFORMATTED_VALUE`, { headers: H });
+    const vr = await fetch(`https://sheets.googleapis.com/v4/spreadsheets/${sheetId}/values/${range}?valueRenderOption=FORMATTED_VALUE`, { headers: H });
     if (!vr.ok) throw new Error(`讀取分頁 ${tab} 失敗 HTTP ${vr.status}`);
     values = (await vr.json()).values || [];
   } catch (e) {
@@ -72,6 +74,10 @@ export async function onRequestPost({ request, env }) {
     return o;
   });
   const list = cleanRows(raw);
+  // 對帳用：Sheet 列數 ≠ 寫入列數時，要分得出是空白列、缺料號/倉庫，還是同料號同倉重複
+  const blank = raw.filter((o) => Object.values(o).every((v) => String(v ?? '').trim() === '')).length;
+  const noKey = raw.filter((o) => !String(o.part_no ?? '').trim() || !String(o.wh_code ?? '').trim()).length - blank;
+  const stats = { sheet_rows: raw.length, blank, no_key: noKey, merged_dup: raw.length - blank - noKey - list.length };
   if (!list.length) {
     if (!dry) await logFail(env, batch, '0 筆有效列', email);
     return err(`分頁 ${tab} 沒有有效列`, 422);
@@ -82,7 +88,7 @@ export async function onRequestPost({ request, env }) {
   if (dry) {
     const changed = list.filter((x) => (old.get(`${x.part}|${x.wh}`) ?? 0) !== x.qty).length;
     const added = list.filter((x) => !old.has(`${x.part}|${x.wh}`)).length;
-    return ok({ dry: true, tab, rows: list.length, changed, added });
+    return ok({ dry: true, tab, rows: list.length, changed, added, ...stats });
   }
 
   let adjusted = 0;
@@ -98,5 +104,5 @@ export async function onRequestPost({ request, env }) {
     }
   }
   await importLogStmt(env, { batch, ts, source: 'sheet:' + tab, rows: list.length, email }).run();
-  return ok({ batch, tab, rows: list.length, adjusted });
+  return ok({ batch, tab, rows: list.length, adjusted, ...stats });
 }

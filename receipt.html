@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>進料入庫</title><link rel="stylesheet" href="/_lib/app.css"></head><body>
+<script src="/_lib/nav.js"></script>
+<h2>進料入庫</h2>
+<p class="muted">流程：① 阿國核對「廠商發票金額＝採購單金額」→ ② 通過的列才能入庫（不可超收）。採購總表的到貨日目前<b>不會</b>回寫。</p>
+<div class="bar">
+  <input id="q" placeholder="採購單號 / 料號 / 廠商 / 專案" style="width:280px">
+  <label><input type="checkbox" id="all"> 含已入滿</label>
+  <button id="go" class="pri">查詢</button>
+  <span id="info" class="muted"></span>
+</div>
+<div id="msg" class="msg"></div>
+<table><thead><tr>
+  <th>採購單號</th><th>廠商</th><th>料號</th><th>品名規格</th><th>專案</th>
+  <th class="n">採購量</th><th class="n">已入</th><th class="n">金額</th><th>發票核對</th><th>入庫</th>
+</tr></thead><tbody id="bd"><tr><td colspan="10" class="muted">輸入條件查詢</td></tr></tbody></table>
+<script src="/_lib/auth.js"></script>
+<script>
+var $=function(i){return document.getElementById(i)};
+var esc=function(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})};
+var CAN_GATE=false, ROWS=[];
+function msg(t,cls){$('msg').className='msg '+(cls||'');$('msg').textContent=t}
+async function api(u,body){var r=await INVAuth.authedFetch(u,body?{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}:{});
+  var d={};try{d=await r.json()}catch(e){} if(!r.ok||!d.ok)throw new Error(d.error||('HTTP '+r.status));return d}
+function gateCell(x){
+  var g=x.gate, s=g?(g.status==='ok'?'<span class="tag ok">✓ 一致</span>':'<span class="tag bad">✗ 不符</span>'):'<span class="tag wait">待核對</span>';
+  if(g) s+='<div class="muted">發票 '+esc(g.invoice_no)+' / '+esc(g.invoice_amount)+'</div>';
+  if(CAN_GATE) s+='<div><input data-inv="'+x.id+'" placeholder="發票號" style="width:110px" value="'+esc(g?g.invoice_no:(x.invoice_no||''))+'"> '+
+    '<input data-amt="'+x.id+'" placeholder="發票金額" style="width:90px" value="'+esc(g?g.invoice_amount:'')+'"> <button data-gate="'+x.id+'">核對</button></div>';
+  return s;
+}
+function render(){
+  $('bd').innerHTML=ROWS.map(function(x){
+    var left=(Number(x.qty)||0)-x.received, ok=x.gate&&x.gate.status==='ok';
+    return '<tr><td>'+esc(x.po_no)+'<div class="muted">'+esc(x.order_date||'')+'</div></td><td>'+esc(x.vendor)+'</td><td>'+esc(x.part_no)+'</td>'+
+      '<td>'+esc(x.name)+'<div class="muted">'+esc(x.spec||'')+'</div></td><td>'+esc(x.project_no||'')+'</td>'+
+      '<td class="n">'+esc(x.qty)+'</td><td class="n">'+x.received+'</td><td class="n">'+esc(x.amount)+' '+esc(x.currency||'')+'</td>'+
+      '<td>'+gateCell(x)+'</td><td>'+(left>0?(ok?'<input class="q" data-qty="'+x.id+'" value="'+left+'"> <select data-wh="'+x.id+'"><option>Z</option><option>HR</option><option>RD</option><option>O</option></select> <button class="pri" data-in="'+x.id+'">入庫</button>':'<span class="muted">需先核對發票</span>'):'<span class="tag ok">已入滿</span>')+'</td></tr>';
+  }).join('')||'<tr><td colspan="10" class="muted">沒有符合的採購明細</td></tr>';
+}
+async function search(){
+  msg('查詢中…');
+  try{var d=await api('/api/receipt/lines?q='+encodeURIComponent($('q').value.trim())+($('all').checked?'&all=1':'')+'&_='+Date.now());
+    CAN_GATE=d.can_gate;ROWS=d.rows;render();msg('');
+    $('info').textContent=ROWS.length+' 列'+(d.truncated?'（結果太多只列前 300，請縮小條件）':'')+(CAN_GATE?'':'　｜ 發票核對限採購（阿國）操作');
+  }catch(e){msg(e.message,'err')}
+}
+$('go').onclick=search;$('q').onkeydown=function(e){if(e.key==='Enter')search()};
+$('bd').onclick=async function(e){
+  var b=e.target.closest('button');if(!b)return;
+  try{
+    if(b.dataset.gate){var id=+b.dataset.gate;
+      var d=await api('/api/receipt/gate',{po_line_id:id,invoice_no:document.querySelector('[data-inv="'+id+'"]').value.trim(),
+        invoice_amount:Number(document.querySelector('[data-amt="'+id+'"]').value.replace(/,/g,''))});
+      msg(d.status==='ok'?'核對通過，可以入庫':'金額不符：採購單 '+d.po_amount+'，發票 '+d.invoice_amount,d.status==='ok'?'good':'err');search();}
+    if(b.dataset.in){var id2=+b.dataset.in, q=Number(document.querySelector('[data-qty="'+id2+'"]').value), wh=document.querySelector('[data-wh="'+id2+'"]').value;
+      if(!confirm('入庫 '+q+' 到倉庫 '+wh+'？'))return;b.disabled=true;
+      var r=await api('/api/receipt/post',{po_line_id:id2,qty:q,wh_code:wh});
+      msg('已入庫：'+r.part_no+' ×'+q+' → '+wh+'（累計 '+r.received+'）','good');search();}
+  }catch(err){msg(err.message,'err');b.disabled=false}
+};
+INVAuth.tryAutoLogin();
+</script></body></html>

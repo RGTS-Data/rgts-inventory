@@ -1,6 +1,7 @@
 // GET /api/moves/list?part=&project=&type=&limit=  異動流水帳（唯讀）
 import { requireAuth } from '../_lib/auth.js';
 import { ok, err } from '../_lib/json.js';
+import { projKey } from '../_lib/projkey.js';
 
 export async function onRequestGet({ request, env }) {
   const { failed } = requireAuth(request, env);
@@ -10,7 +11,7 @@ export async function onRequestGet({ request, env }) {
   const where = [], bind = [];
   for (const [k, col] of [['part', 'part_no'], ['project', 'project_no'], ['type', 'type']]) {
     const v = (u.searchParams.get(k) || '').trim();
-    if (v) { where.push(`${col} = ?`); bind.push(k === 'part' ? v.toUpperCase() : v); }
+    if (v) { where.push(`${col} = ?`); bind.push(k === 'part' ? v.toUpperCase() : k === 'project' ? projKey(v) : v); }
   }
   const limit = Math.min(Number(u.searchParams.get('limit')) || 200, 1000);
   const r = await env.DB.prepare(

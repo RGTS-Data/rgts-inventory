@@ -4,21 +4,30 @@
 import { requireAuth } from '../_lib/auth.js';
 import { ok, err, readBody } from '../_lib/json.js';
 import { nowIso, normPart } from '../_lib/util.js';
+import { projKey, mainNo } from '../_lib/projkey.js';
 
 export async function onRequestPost({ request, env }) {
   const { user, failed } = requireAuth(request, env);
   if (failed) return failed;
   if (!env.DB) return err('DB binding missing', 500);
   const b = await readBody(request);
-  const project = String(b.project_no || '').trim();
+  const project = projKey(b.project_no);   // 統一存 BOM 寫法（3509-5），見 _lib/projkey.js
   const part = normPart(b.part_no);
   const qty = Number(b.qty);
   const wh = String(b.wh_code || 'Z').trim().toUpperCase();
   if (!project || !part || !(qty > 0)) return err('project_no / part_no / qty(>0) 必填');
 
-  // 專案必須存在於專案總表（唯讀查）
-  const p = await env.DB.prepare(`SELECT 1 AS x FROM projects WHERE project_no = ? LIMIT 1`).bind(project).first();
-  if (!p) return err(`專案總表查無專案 ${project}`, 404, { code: 'project_unknown' });
+  // 專案必須存在：BOM 現行版有這個專案號，或專案總表（3509(5) 寫法）正規化後對得上（唯讀查）
+  const inBom = await env.DB.prepare(
+    `SELECT 1 AS x FROM bom_projects WHERE UPPER(project_no) = ? AND is_current = 1 LIMIT 1`
+  ).bind(project).first();
+  let known = !!inBom;
+  if (!known) {
+    const cand = (await env.DB.prepare(`SELECT project_no FROM projects WHERE project_no LIKE ? LIMIT 200`)
+      .bind(`%${mainNo(project)}%`).all()).results || [];
+    known = cand.some((x) => projKey(x.project_no) === project);
+  }
+  if (!known) return err(`查無專案 ${project}（BOM 與專案總表都沒有）`, 404, { code: 'project_unknown' });
 
   const ts = nowIso();
   // 先寫流水帳（只有庫存夠才寫得進去），再扣庫存（同條件）；兩句同批原子執行
