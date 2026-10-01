@@ -5,6 +5,8 @@
 table{border-collapse:collapse;width:100%}td,th{border-bottom:1px solid #ddd;padding:4px 8px;text-align:left}
 td.n{text-align:right}input{padding:6px}</style></head><body>
 <h2>庫存現況 <small><a href="/import.html">期初匯入</a></small></h2>
+<p><button id="sync">🔄 從 Google Sheet「庫存表」同步</button> <span id="syncmsg"></span></p>
+<p id="last" style="color:#666;font-size:12px"></p>
 <input id="q" placeholder="搜尋料號/品名"> <select id="wh"><option value="">全部倉</option><option>Z</option><option>HR</option><option>RD</option><option>O</option></select>
 <table><thead><tr><th>料號</th><th>品名規格</th><th>倉</th><th>單位</th><th>現有庫存</th></tr></thead><tbody id="t"></tbody></table>
 <script src="/_lib/auth.js"></script>
@@ -18,4 +20,15 @@ async function load(){
 }
 var t=document.getElementById('t'),q=document.getElementById('q'),wh=document.getElementById('wh'),tm;
 q.oninput=function(){clearTimeout(tm);tm=setTimeout(load,250)};wh.onchange=load;load();
+async function post(u){var r=await INVAuth.authedFetch(u,{method:'POST'});var d={};try{d=await r.json()}catch(e){}if(!r.ok||!d.ok)throw new Error(d.error||('HTTP '+r.status));return d}
+async function last(){try{var d=await (await INVAuth.authedFetch('/api/admin/last-sync?_='+Date.now())).json();
+  document.getElementById('last').textContent='最近同步：'+(d.rows||[]).map(function(x){return x.ts.slice(0,16).replace('T',' ')+' '+x.source+'（'+x.row_count+' 列）'}).join('；')}catch(e){}}
+document.getElementById('sync').onclick=async function(){
+  var m=document.getElementById('syncmsg'),btn=this;btn.disabled=true;
+  try{m.textContent='試算中…';var d=await post('/api/admin/sync-sheet?dry=1');
+    if(!confirm('分頁「'+d.tab+'」共 '+d.rows+' 列，其中 '+d.changed+' 列數量會變（新增 '+d.added+' 列）。\n以這份「覆蓋」庫存？')){m.textContent='已取消';return}
+    m.textContent='同步中，約需數十秒，請勿關閉…';d=await post('/api/admin/sync-sheet');
+    m.textContent='完成：'+d.rows+' 列，'+d.adjusted+' 列數量有變（已寫流水帳）';load();last();
+  }catch(e){m.textContent='失敗：'+e.message}finally{btn.disabled=false}};
+last();
 </script></body></html>
