@@ -1,5 +1,5 @@
 -- rgts-inventory 0001：庫存系統（共用 rgts-pi-db，全部 inv_ 前綴；絕不動別人的表）
--- APPLIED: （尚未套用，等 Chris 同意後套）
+-- APPLIED: 2026-10-01 rgts-pi-db（4 表 + 3 索引，Chris 同意）
 
 -- 現有庫存：料號 × 倉庫（期初由 Excel「庫存表」覆蓋匯入，之後由進料/領料異動）
 CREATE TABLE IF NOT EXISTS inv_stock (
