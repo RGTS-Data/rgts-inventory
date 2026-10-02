@@ -1,5 +1,5 @@
 -- rgts-inventory 0002：單據化（照 Willy 2026-10-02 正航日常作業畫面：進貨單／領料單(銷貨單代用)／調撥單）
--- APPLIED: （尚未套用）
+-- APPLIED: 2026-10-02 rgts-pi-db（Chris 要求做 Willy 單據功能；既有 sheet:260629 匯入補記 data_date=2026-06-29）
 
 -- 單據表頭
 CREATE TABLE IF NOT EXISTS inv_docs (
