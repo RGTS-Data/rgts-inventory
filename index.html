@@ -11,11 +11,15 @@
 .wrap th,.wrap td{border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:4px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px}
 .wrap thead th{position:sticky;top:0;background:var(--hd);z-index:2;user-select:none;font-size:12px}
 th .lbl{cursor:pointer}th .lbl:hover{color:var(--ac)}
-th .fb{float:right;border:0;background:none;padding:0 3px;color:var(--muted);cursor:pointer;font-weight:400}
-th .fb.on{color:#fff;background:var(--ac);border-radius:4px}
+tr.fr th{background:var(--panel);padding:2px 3px;z-index:2}
+tr.fr input,tr.fr button.fsel{display:block;width:100%;box-sizing:border-box;padding:1px 4px;border:1px solid var(--line2);border-radius:4px;font-size:11px;font-weight:400}
+tr.fr input{margin-bottom:2px}
+tr.fr button.fsel{text-align:left;color:var(--muted);background:#fff;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+tr.fr button.fsel.on{background:#dbeafe;border-color:#60a5fa;color:var(--ink);font-weight:600}
 th .rs{position:absolute;right:-3px;top:0;bottom:0;width:7px;cursor:col-resize;z-index:3}
 .wrap td:first-child,.wrap th:first-child{position:sticky;left:0;background:var(--panel);z-index:1}
 .wrap thead th:first-child{z-index:4;background:var(--hd)}
+.wrap thead tr.fr th:first-child{background:var(--panel)}
 .wrap tbody tr:hover td{background:var(--hi)}
 .wrap tfoot td{position:sticky;bottom:0;background:var(--hd);font-weight:700}
 .vm{position:absolute;z-index:50;background:#fff;border:1px solid var(--line2);box-shadow:0 8px 24px rgba(15,23,42,.15);border-radius:12px;width:290px;padding:10px}
@@ -81,7 +85,7 @@ a.kpi:hover{border-color:var(--ac)}
     {k:'updated_at',l:'更新時間',w:130,t:'s'}
   ];
   var WKEY='inv_colw', SELECT_CAP=1000;
-  var ROWS=[], FILT={}, SORT={k:null,d:1}, VM=null, vmShowAll=false;
+  var TXT={}, ROWS=[], FILT={}, SORT={k:null,d:1}, VM=null, vmShowAll=false;
   var $=function(id){return document.getElementById(id)};
   var esc=function(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})};
   var num=function(v){var n=Number(v);return isFinite(n)?n:0};
@@ -100,13 +104,20 @@ a.kpi:hover{border-color:var(--ac)}
   }
 
   // ── 表頭（只建一次；篩選中的欄 ▾ 會變藍）
+  // 篩選列 sticky 位置＝標題列實高（同採購總表做法，別寫死）
+  function stickyFr(){var set=function(){var tr=$('th').rows[0];var h=tr?tr.offsetHeight:24;
+    [].forEach.call($('th').querySelectorAll('tr.fr th'),function(th){th.style.top=h+'px'})};set();requestAnimationFrame(set)}
   function header(){
     $('th').innerHTML='<tr>'+COLS.map(function(c,i){
       var arrow=SORT.k===c.k?(SORT.d>0?' ▲':' ▼'):'';
-      var on=FILT[c.k]?' on':'';
       return'<th class="'+(c.t==='n'?'n':'')+'" data-i="'+i+'"><span class="lbl" data-sort="'+c.k+'">'+esc(c.l)+arrow+'</span>'+
-        '<button class="fb'+on+'" data-f="'+c.k+'" title="篩選">▾</button><span class="rs" data-rs="'+i+'"></span></th>';
+        '<span class="rs" data-rs="'+i+'"></span></th>';
+    }).join('')+'</tr><tr class="fr">'+COLS.map(function(c){
+      var n=FILT[c.k]?FILT[c.k].size:0;
+      return'<th><input data-t="'+c.k+'" placeholder="篩…" value="'+esc(TXT[c.k]||'')+'">'+
+        '<button class="fsel'+(n?' on':'')+'" data-f="'+c.k+'" title="點一下勾選要看的值（可複選）">'+(n?(n===1?esc([...FILT[c.k]][0]):'已選 '+n+' 項'):'（全部）')+'</button></th>';
     }).join('')+'</tr>';
+    stickyFr();
   }
 
   // ── 篩選：搜尋框＋每欄勾選值；except 用來算「連動」候選值
@@ -115,6 +126,7 @@ a.kpi:hover{border-color:var(--ac)}
     var q=$('q').value.trim().toLowerCase();
     if(q && (String(r.part_no)+' '+String(r.name)+' '+String(r.location||'')).toLowerCase().indexOf(q)<0) return false;
     for(var k in FILT){ if(k===except) continue; if(!FILT[k].has(sval(r,k))) return false; }
+    for(var t in TXT){ if(t===except||!TXT[t]) continue; if(String(val(r,t)).toLowerCase().indexOf(TXT[t])<0) return false; }
     return true;
   }
   function cmp(a,b,k,t){
@@ -205,6 +217,9 @@ a.kpi:hover{border-color:var(--ac)}
   });
   document.addEventListener('mousedown',function(e){if(VM&&!VM.contains(e.target)&&!e.target.closest('[data-f]'))closeVM()});
   var tm;$('q').oninput=function(){clearTimeout(tm);tm=setTimeout(render,200)};
+  // 每欄文字篩選：只重畫表身（不重建表頭 → 打字不掉焦點）
+  var tt;$('th').addEventListener('input',function(e){var k=e.target.dataset.t;if(!k)return;
+    TXT[k]=e.target.value.trim().toLowerCase();clearTimeout(tt);tt=setTimeout(render,200)});
   $('hz').onchange=render;
   // 點儲位格 → 修改（料號×倉庫一個儲位）
   $('bd').addEventListener('click',async function(e){
@@ -215,7 +230,7 @@ a.kpi:hover{border-color:var(--ac)}
       var d=await res.json();if(!d.ok)throw new Error(d.error||res.status);r.location=d.location||'';render();
     }catch(err){alert('儲位存檔失敗：'+err.message)}
   });
-  $('clr').onclick=function(){FILT={};SORT={k:null,d:1};$('q').value='';header();render()};
+  $('clr').onclick=function(){FILT={};TXT={};SORT={k:null,d:1};$('q').value='';header();render()};
   $('cw').onclick=function(){WID={};saveW(WID);colgroup()};
 
   // ── 匯出：所見即所得（篩選＋排序後的列、同一份欄位）
