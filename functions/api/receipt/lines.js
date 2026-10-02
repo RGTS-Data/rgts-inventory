@@ -1,8 +1,9 @@
 // GET /api/receipt/lines?q=&all=1  進料用：查採購明細（採購單號/料號/廠商/專案），附「已入庫量」與「發票核對狀態」
-// 預設只列「還沒入滿」的；all=1 連已入滿的一起列。唯讀 purchase_*。
+// 附「已入（已過帳）」與「待核對（進貨單未過帳）」；預設只列還沒入滿的；all=1 連已入滿的一起列。唯讀 purchase_*。
 import { requireAuth } from '../_lib/auth.js';
 import { ok, err } from '../_lib/json.js';
-import { chunk, gateEmails } from '../_lib/util.js';
+import { gateEmails } from '../_lib/util.js';
+import { receivedMap } from '../_lib/receipt-qty.js';
 
 export async function onRequestGet({ request, env }) {
   const { user, failed } = requireAuth(request, env);
@@ -22,19 +23,11 @@ export async function onRequestGet({ request, env }) {
      ORDER BY o.order_date DESC, l.id DESC LIMIT 300`
   ).bind(like, like, like, like).all();
   const lines = r.results || [];
-  const ids = lines.map((x) => x.id);
-  const recv = new Map(), gate = new Map();
-  for (const c of chunk(ids)) {
-    const ph = c.map(() => '?').join(',');
-    for (const x of (await env.DB.prepare(
-      `SELECT po_line_id, SUM(qty_delta) s FROM inv_moves WHERE type='receipt' AND po_line_id IN (${ph}) GROUP BY po_line_id`
-    ).bind(...c).all()).results || []) recv.set(x.po_line_id, Number(x.s) || 0);
-    for (const g of (await env.DB.prepare(
-      `SELECT * FROM inv_receipt_gate WHERE po_line_id IN (${ph})`
-    ).bind(...c).all()).results || []) gate.set(g.po_line_id, g);
-  }
-  const rows = lines.map((x) => ({ ...x, received: recv.get(x.id) || 0, gate: gate.get(x.id) || null }))
-    .filter((x) => all || x.received < (Number(x.qty) || 0));
+  const recv = await receivedMap(env, lines.map((x) => x.id));
+  const rows = lines.map((x) => {
+    const r = recv.get(x.id) || { posted: 0, pending: 0 };
+    return { ...x, received: r.posted, pending: r.pending };
+  }).filter((x) => all || x.received + x.pending < (Number(x.qty) || 0));
   const canGate = user.via === 'cf-access' && gateEmails(env).includes(String(user.email).toLowerCase());
   return ok({ rows, can_gate: canGate, truncated: lines.length >= 300 });
 }

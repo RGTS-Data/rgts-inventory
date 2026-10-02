@@ -67,10 +67,33 @@ export function buildStmts(env, list, old, { batch, ts, email }) {
   return { stmts, adjusted };
 }
 
-// 匯入批次紀錄（同 batch 分多次送時累加列數）
-export function importLogStmt(env, { batch, ts, source, rows, email }) {
+// 匯入批次紀錄（同 batch 分多次送時累加列數）；dataDate＝這份資料是哪一天的庫存
+export function importLogStmt(env, { batch, ts, source, rows, email, dataDate = null }) {
   return env.DB.prepare(
-    `INSERT INTO inv_imports (batch, ts, source, row_count, created_by) VALUES (?,?,?,?,?)
-     ON CONFLICT(batch) DO UPDATE SET row_count = row_count + excluded.row_count, source = excluded.source`
-  ).bind(batch, ts, source, rows, email);
+    `INSERT INTO inv_imports (batch, ts, source, row_count, created_by, data_date) VALUES (?,?,?,?,?,?)
+     ON CONFLICT(batch) DO UPDATE SET row_count = row_count + excluded.row_count, source = excluded.source,
+       data_date = COALESCE(excluded.data_date, data_date)`
+  ).bind(batch, ts, source, rows, email, dataDate);
+}
+
+// 目前庫存的資料日期（最近一次成功匯入/同步所記的 data_date）
+export async function latestDataDate(env) {
+  const r = await env.DB.prepare(`SELECT MAX(data_date) AS d FROM inv_imports WHERE data_date IS NOT NULL AND row_count > 0`).first();
+  return r?.d || null;
+}
+
+// 完整覆蓋：這批沒出現的 (料號,倉) 一律歸零（留流水帳）。
+// 用在「正航存量明細表」：它只列有庫存的料 → 沒出現＝0。
+export function zeroMissingStmts(env, { batch, ts, email }) {
+  return [
+    env.DB.prepare(
+      `INSERT INTO inv_moves (ts,type,part_no,wh_code,qty_delta,qty_after,batch,note,created_by)
+       SELECT ?, 'import_adjust', part_no, wh_code, -qty, 0, ?, '完整覆蓋：檔案沒有此列 → 歸零（原 ' || qty || '）', ?
+       FROM inv_stock WHERE COALESCE(import_batch,'') <> ? AND qty <> 0`
+    ).bind(ts, batch, email, batch),
+    env.DB.prepare(
+      `UPDATE inv_stock SET qty = 0, borrow_in = 0, borrow_out = 0, updated_at = ?
+       WHERE COALESCE(import_batch,'') <> ? AND (qty <> 0 OR borrow_in <> 0 OR borrow_out <> 0)`
+    ).bind(ts, batch),
+  ];
 }

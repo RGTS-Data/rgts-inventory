@@ -1,42 +1,54 @@
 <!doctype html>
 <html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>庫存期初匯入</title>
-<style>body{font:14px system-ui,sans-serif;max-width:760px;margin:24px auto;padding:0 16px}
-.warn{background:#fff3cd;border:1px solid #e0b100;padding:10px;border-radius:6px}
-button{padding:8px 16px}pre{background:#f4f4f4;padding:8px;white-space:pre-wrap}</style></head><body>
+<title>庫存 Excel 匯入</title><link rel="stylesheet" href="/_lib/app.css">
+<style>.warn{background:#fff3cd;border:1px solid #e0b100;padding:10px;border-radius:6px}pre{background:#f4f4f4;padding:8px;white-space:pre-wrap}</style></head><body>
 <script src="/_lib/nav.js"></script>
-<h2>庫存期初匯入（Excel「庫存表」，覆蓋模式）</h2>
-<p class="warn">⚠ 覆蓋：每列的現有庫存直接設成 Excel 的值；與舊值有差會在流水帳留一筆「import_adjust」。Excel 沒出現的料號/倉庫<b>不會被動</b>。</p>
-<p>欄位：產品編號、品名規格、單位、倉庫編號、倉庫名稱、現有庫存、借入數量、借出數量、實際在庫量。</p>
-<input type="file" id="f" accept=".xlsx,.xls,.csv"> <button id="go" disabled>開始匯入</button>
+<h2>庫存 Excel 匯入（正航「存量明細表」）</h2>
+<p class="warn">⚠ 覆蓋：每列的現有庫存直接設成檔案的值；有差異會在流水帳留紀錄。<br>
+勾「完整覆蓋」時，<b>檔案沒有的料號／倉庫一律歸零</b>（存量明細表只列有庫存的料）。<br>
+已開始線上進料／領料後就不該再覆蓋，系統會擋下並要求輸入 OVERWRITE。</p>
+<p class="muted">欄位（按表頭名對）：產品編號、品名規格、單位、倉庫編號、倉庫名稱、現有庫存、借入數量、借出數量。.xls／.xlsx 都可以。</p>
+<div class="grid" style="max-width:700px">
+  <label>檔案<input type="file" id="f" accept=".xlsx,.xls,.csv"></label>
+  <label>資料日期（這份是哪天的庫存）<input type="date" id="dd"></label>
+  <label style="flex-direction:row;align-items:center;gap:6px"><input type="checkbox" id="full" checked> 完整覆蓋（檔案沒有的歸零）</label>
+</div>
+<p><button id="go" class="pri" disabled>開始匯入</button></p>
 <pre id="log">先選檔。</pre>
-<script src="/_lib/auth.js"></script>
+<script src="/_lib/auth.js"></script><script src="/_lib/common.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-var rows=[],log=function(s){document.getElementById('log').textContent+='\n'+s};
-document.getElementById('f').onchange=function(e){
+var rows=[],fname='',log=function(s){U.$('log').textContent+='\n'+s};
+// 檔名猜資料日期：存量明細表1002 → 今年-10-02；260629 → 2026-06-29
+function guessDate(n){var m=n.match(/(\d{6})(?!\d)/);if(m){var y=m[1];return'20'+y.slice(0,2)+'-'+y.slice(2,4)+'-'+y.slice(4,6)}
+  m=n.match(/(\d{4})(?!\d)/);if(m){return new Date().getFullYear()+'-'+m[1].slice(0,2)+'-'+m[1].slice(2,4)}return U.today()}
+U.$('f').onchange=function(e){
+  var file=e.target.files[0];if(!file)return;fname=file.name;U.$('dd').value=guessDate(fname.replace(/\.\w+$/,''));
   var r=new FileReader();r.onload=function(){
     var wb=XLSX.read(r.result,{type:'array'});var ws=wb.Sheets[wb.SheetNames[0]];
-    var j=XLSX.utils.sheet_to_json(ws,{defval:''});
-    // 欄位按表頭名對映（不靠欄位位置）
+    var j=XLSX.utils.sheet_to_json(ws,{defval:'',raw:false});   // raw:false＝看到什麼拿什麼（純數字料號不掉前導 0）
     rows=j.map(function(o){return{part_no:o['產品編號'],name:o['品名規格'],unit:o['單位'],wh_code:o['倉庫編號'],wh_name:o['倉庫名稱'],qty:o['現有庫存'],borrow_in:o['借入數量'],borrow_out:o['借出數量']}})
       .filter(function(x){return String(x.part_no).trim()&&String(x.wh_code).trim()});
-    document.getElementById('log').textContent='分頁「'+wb.SheetNames[0]+'」讀到 '+rows.length+' 列（有效）';
-    document.getElementById('go').disabled=!rows.length;
-  };r.readAsArrayBuffer(e.target.files[0]);
+    U.$('log').textContent='「'+fname+'」分頁「'+wb.SheetNames[0]+'」讀到 '+rows.length+' 列（有效）';
+    if(!rows.length)log('⚠ 沒讀到資料：請確認表頭有「產品編號」「倉庫編號」「現有庫存」');
+    U.$('go').disabled=!rows.length;
+  };r.readAsArrayBuffer(file);
 };
-document.getElementById('go').onclick=async function(){
-  if(!confirm('確定以此檔「覆蓋」庫存？'))return;
-  this.disabled=true;
-  await INVAuth.tryAutoLogin();
-  var batch='imp-'+new Date().toISOString().replace(/[:.]/g,'-');var up=0,adj=0;
+U.$('go').onclick=async function(){
+  var full=U.$('full').checked;
+  if(!confirm('以「'+fname+'」（資料日期 '+U.$('dd').value+'）覆蓋庫存'+(full?'，檔案沒有的料歸零':'')+'？'))return;
+  this.disabled=true;await INVAuth.tryAutoLogin();
+  var batch='imp-'+new Date().toISOString().replace(/[:.]/g,'-'),up=0,adj=0,force=false;
   for(var i=0;i<rows.length;i+=80){
-    var res=await INVAuth.authedFetch('/api/import/stock',{method:'POST',headers:{'content-type':'application/json'},
-      body:JSON.stringify({batch:batch,source:'庫存表',rows:rows.slice(i,i+80)})});
-    var d=await res.json();
-    if(!d.ok){log('失敗：'+(d.error||res.status)+'（已處理 '+up+' 列，可重跑，冪等）');return}
+    var body={batch:batch,source:'xls:'+fname,data_date:U.$('dd').value,rows:rows.slice(i,i+80),force:force};
+    try{var d=await U.api('/api/import/stock',body)}catch(e){
+      if(e.code==='online_started'&&!force&&prompt(e.message+'\n確定還是要覆蓋請輸入 OVERWRITE：')==='OVERWRITE'){force=true;i-=80;continue}
+      log('失敗：'+e.message+'（已處理 '+up+' 列，可重跑，結果相同）');this.disabled=false;return}
     up+=d.upserted;adj+=d.adjusted;log('已處理 '+up+'/'+rows.length);
   }
-  log('完成：'+up+' 列，其中 '+adj+' 列數量有差異（已寫流水帳）。批次 '+batch);
+  log('寫入完成：'+up+' 列，其中 '+adj+' 列數量有變（已寫流水帳）');
+  if(full){try{var f=await U.api('/api/import/finish',{batch:batch,zero_missing:true});log('完整覆蓋：檔案沒有的 '+f.zeroed+' 列已歸零')}catch(e){log('歸零步驟失敗：'+e.message)}}
+  log('完成。批次 '+batch);this.disabled=false;
 };
+U.$('dd').value=U.today();
 </script></body></html>

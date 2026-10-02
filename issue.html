@@ -1,60 +1,81 @@
 <!doctype html>
 <html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>專案領料</title><link rel="stylesheet" href="/_lib/app.css"></head><body>
+<title>領料單</title><link rel="stylesheet" href="/_lib/app.css"></head><body>
 <script src="/_lib/nav.js"></script>
-<h2>專案領料（扣帳）</h2>
+<h2>領料單（依專案 BOM）</h2>
 <div class="bar">
-  <input id="pj" placeholder="專案號，例 3509-5 或 3509(5)" style="width:220px">
+  <input id="pj" placeholder="專案號，例 3509-5、3509(5)、115-3640-1" style="width:260px">
   <button id="go" class="pri">載入 BOM</button>
   <span id="info" class="muted"></span>
 </div>
-<div id="msg" class="msg"></div>
-<table><thead><tr>
-  <th>料號</th><th>品名規格</th><th class="n">BOM 需求</th><th class="n">已領</th><th class="n">尚需</th><th>庫存（倉:量）</th><th>本次領料</th>
-</tr></thead><tbody id="bd"><tr><td colspan="7" class="muted">輸入專案號載入現行 BOM</td></tr></tbody></table>
-<h3 style="margin-top:20px">BOM 以外的料</h3>
-<div class="bar">
-  <input id="xp" placeholder="料號" style="width:180px"><input id="xq" class="q" placeholder="數量">
-  <select id="xw"><option>Z</option><option>HR</option><option>RD</option><option>O</option></select>
-  <button id="xgo">領料</button>
+
+<div class="card">
+  <h3>BOM 需求與領料</h3>
+  <div class="bar"><label><input type="checkbox" id="onlyLeft" checked> 只顯示尚需 &gt; 0</label>
+    <button id="fill">本次＝尚需（依庫存上限）</button><button id="clear">本次全部清 0</button></div>
+  <div style="max-height:50vh;overflow:auto">
+  <table><thead><tr><th>料號</th><th>品名規格</th><th class="n">BOM 需求</th><th class="n">已領</th><th class="n">尚需</th><th>各倉庫存</th><th class="n">本次領料</th><th>出庫倉</th></tr></thead>
+  <tbody id="bd"><tr><td colspan="8" class="muted">輸入專案號載入現行 BOM</td></tr></tbody></table>
+  </div>
+  <h3 style="margin-top:12px">BOM 以外的料（補料／替代料）</h3>
+  <table><thead><tr><th>料號</th><th class="n">數量</th><th>出庫倉</th><th>備註</th><th></th></tr></thead><tbody id="extra"></tbody></table>
+  <button id="addx">＋ 加一列</button>
+  <div class="grid" style="margin-top:10px">
+    <label>領料日期<input type="date" id="dd"></label>
+    <label style="grid-column:span 2">備註<input id="note"></label>
+  </div>
+  <p><button id="save" class="pri">建立領料單並扣帳</button> <span class="muted">任何一列庫存不足 → 整張不過帳</span></p>
+  <div id="msg" class="msg"></div>
 </div>
-<script src="/_lib/auth.js"></script>
+
+<div class="card"><h3>本專案庫存單據</h3><table><thead><tr><th>單號</th><th>類型</th><th>日期</th><th>狀態</th><th class="n">列數</th><th>製單</th></tr></thead><tbody id="docs"></tbody></table></div>
+<div class="card"><h3>BOM 異動紀錄（bom-tool）</h3><table><thead><tr><th>時間</th><th>人員</th><th>動作</th><th>內容</th></tr></thead><tbody id="logs"></tbody></table></div>
+
+<script src="/_lib/auth.js"></script><script src="/_lib/common.js"></script>
 <script>
-var $=function(i){return document.getElementById(i)};
-var esc=function(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})};
-var PJ='';
-function msg(t,cls){$('msg').className='msg '+(cls||'');$('msg').textContent=t}
-async function api(u,body){var r=await INVAuth.authedFetch(u,body?{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}:{});
-  var d={};try{d=await r.json()}catch(e){} if(!r.ok||!d.ok)throw new Error(d.error||('HTTP '+r.status));return d}
+var PJ='', ROWS=[], QTY={}, WHS={};
+function leftOf(r){return Math.max(0,Math.round((r.need-r.issued)*1e6)/1e6)}
+function bestWh(r){return (r.stock.slice().sort(function(a,b){return b.qty-a.qty})[0]||{wh:'Z'}).wh}
+function render(){
+  var only=U.$('onlyLeft').checked;
+  U.$('bd').innerHTML=ROWS.map(function(r,i){
+    var l=leftOf(r); if(only&&l<=0&&!QTY[i])return '';
+    var whs=r.stock.length?r.stock.map(function(s){return U.esc(s.wh)+':'+U.fmt(s.qty)}).join('　'):'<span class="err">無庫存</span>';
+    return '<tr><td><a class="pn" href="/part.html?part='+encodeURIComponent(r.part_no)+'" target="_blank">'+U.esc(r.part_no)+'</a>'+(r.spare?' <span class="tag wait">含補料</span>':'')+'</td>'+
+      '<td>'+U.esc(r.name)+'<div class="muted">'+U.esc(r.spec||'')+'</div></td><td class="n">'+U.fmt(r.need)+'</td><td class="n">'+U.fmt(r.issued)+'</td>'+
+      '<td class="n">'+(l>0?'<b>'+U.fmt(l)+'</b>':'<span class="tag ok">已領足</span>')+'</td><td>'+whs+'</td>'+
+      '<td class="n"><input class="q" data-i="'+i+'" value="'+(QTY[i]||'')+'" placeholder="0"></td><td>'+U.whSel('data-w="'+i+'"',WHS[i]||bestWh(r),r.stock.map(function(s){return s.wh}))+'</td></tr>';
+  }).join('')||'<tr><td colspan="8" class="muted">沒有需要領的料</td></tr>';
+}
 async function load(){
-  msg('載入中…');
-  try{var d=await api('/api/issue/project?project_no='+encodeURIComponent($('pj').value)+'&_='+Date.now());
-    PJ=d.project_no;
-    $('info').textContent=d.bom?('專案 '+PJ+'｜'+(d.bom.model||'')+'｜台數 '+(d.bom.units||'?')+'｜'+d.rows.length+' 項'):('專案 '+PJ+' 找不到現行 BOM（仍可用下方「BOM 以外的料」領料）');
-    $('bd').innerHTML=d.rows.map(function(r,i){
-      var left=Math.max(0,Math.round((r.need-r.issued)*1e6)/1e6);
-      var best=(r.stock.slice().sort(function(a,b){return b.qty-a.qty})[0]||{wh:'Z'}).wh;
-      var whs=r.stock.length?r.stock.map(function(s){return s.wh+':'+s.qty}).join('　'):'<span class="err">無庫存</span>';
-      return '<tr><td>'+esc(r.part_no)+(r.spare?' <span class="tag wait">含補料</span>':'')+'</td><td>'+esc(r.name)+'<div class="muted">'+esc(r.spec||'')+'</div></td>'+
-        '<td class="n">'+r.need+'</td><td class="n">'+r.issued+'</td><td class="n">'+left+'</td><td>'+whs+'</td>'+
-        '<td>'+(left>0?'<input class="q" data-i="'+i+'" value="'+Math.min(left,r.on_hand>0?r.on_hand:left)+'"> <select data-w="'+i+'">'+
-          ['Z','HR','RD','O'].concat(r.stock.map(function(s){return s.wh})).filter(function(v,j,a){return a.indexOf(v)===j}).map(function(w){return'<option'+(w===best?' selected':'')+'>'+esc(w)+'</option>'}).join('')+
-          '</select> <button data-go="'+i+'" data-p="'+esc(r.part_no)+'">領料</button>':'<span class="tag ok">已領足</span>')+'</td></tr>';
-    }).join('')||'<tr><td colspan="7" class="muted">BOM 沒有需要領的料</td></tr>';
-    msg('');
-  }catch(e){msg(e.message,'err')}
+  if(!/^已建立/.test(U.$('msg').textContent))U.msg('載入中…');QTY={};WHS={};
+  try{var d=await U.api('/api/issue/project?project_no='+encodeURIComponent(U.$('pj').value)+'&_='+Date.now());
+    PJ=d.project_no;ROWS=d.rows;render();if(/中…$/.test(U.$('msg').textContent))U.msg('');
+    U.$('info').textContent=d.bom?('專案 '+PJ+'｜'+(d.bom.model||'')+'｜台數 '+(d.bom.units||'?')+'｜'+d.rows.length+' 項'):('專案 '+PJ+' 沒有現行 BOM（可用下方「BOM 以外的料」領料）');
+    U.$('docs').innerHTML=(d.docs||[]).map(function(x){return'<tr><td><a class="pn" href="/docs.html?doc='+x.doc_no+'">'+x.doc_no+'</a></td><td>'+U.TYPE[x.doc_type]+'</td><td>'+x.doc_date+'</td><td>'+(U.STATUS[x.status]||x.status)+'</td><td class="n">'+x.line_count+'</td><td class="muted">'+U.esc(x.created_by)+'</td></tr>'}).join('')||'<tr><td colspan="6" class="muted">尚無</td></tr>';
+    U.$('logs').innerHTML=(d.logs||[]).map(function(x){return'<tr><td>'+U.esc(String(x.ts||'').slice(0,16).replace('T',' '))+'</td><td>'+U.esc(x.actor)+'</td><td>'+U.esc(x.action)+'</td><td>'+U.esc(x.summary||((x.field||'')+' '+(x.old_value||'')+' → '+(x.new_value||'')))+'</td></tr>'}).join('')||'<tr><td colspan="4" class="muted">沒有紀錄</td></tr>';
+  }catch(e){U.msg(e.message,'err')}
 }
-async function issue(part,qty,wh,btn){
-  if(!PJ){msg('請先輸入專案號並載入','err');return}
-  if(!(qty>0)){msg('數量要大於 0','err');return}
-  if(!confirm('專案 '+PJ+' 領料：'+part+' ×'+qty+'（倉 '+wh+'）？'))return;
-  if(btn)btn.disabled=true;
-  try{await api('/api/issue/post',{project_no:PJ,part_no:part,qty:qty,wh_code:wh});msg('已扣帳：'+part+' ×'+qty+'（'+wh+'）','good');load();}
-  catch(e){msg(e.message,'err');if(btn)btn.disabled=false}
-}
-$('go').onclick=load;$('pj').onkeydown=function(e){if(e.key==='Enter')load()};
-$('bd').onclick=function(e){var b=e.target.closest('[data-go]');if(!b)return;var i=b.dataset.go;
-  issue(b.dataset.p,Number(document.querySelector('[data-i="'+i+'"]').value),document.querySelector('[data-w="'+i+'"]').value,b)};
-$('xgo').onclick=function(){if(!PJ)PJ=$('pj').value.trim();issue($('xp').value.trim(),Number($('xq').value),$('xw').value,this)};
-INVAuth.tryAutoLogin();
+function xrow(){var tr=document.createElement('tr');tr.innerHTML='<td><input data-xp placeholder="料號"></td><td class="n"><input class="q" data-xq></td><td>'+U.whSel('data-xw','Z')+'</td><td><input data-xn></td><td><button data-xdel>✕</button></td>';U.$('extra').appendChild(tr)}
+U.$('go').onclick=load;U.$('pj').onkeydown=function(e){if(e.key==='Enter')load()};
+U.$('onlyLeft').onchange=render;
+U.$('bd').addEventListener('change',function(e){var t=e.target;if(t.dataset.i!=null)QTY[t.dataset.i]=U.num(t.value)||'';if(t.dataset.w!=null)WHS[t.dataset.w]=t.value});
+U.$('fill').onclick=function(){ROWS.forEach(function(r,i){var l=leftOf(r);if(l<=0)return;var wh=WHS[i]||bestWh(r),s=(r.stock.find(function(x){return x.wh===wh})||{qty:0}).qty;var q=Math.min(l,Math.max(0,s));if(q>0){QTY[i]=q;WHS[i]=wh}});render()};
+U.$('clear').onclick=function(){QTY={};render()};
+U.$('addx').onclick=xrow;U.$('extra').onclick=function(e){if(e.target.dataset.xdel!=null)e.target.closest('tr').remove()};
+U.$('save').onclick=async function(){
+  if(!PJ){U.msg('請先輸入專案號並載入','err');return}
+  var lines=[];
+  Object.keys(QTY).forEach(function(i){var q=U.num(QTY[i]);if(q>0)lines.push({part_no:ROWS[i].part_no,name:ROWS[i].name,qty:q,wh_code:WHS[i]||bestWh(ROWS[i])})});
+  U.$('extra').querySelectorAll('tr').forEach(function(tr){var p=tr.querySelector('[data-xp]').value.trim(),q=U.num(tr.querySelector('[data-xq]').value);
+    if(p&&q>0)lines.push({part_no:p,qty:q,wh_code:tr.querySelector('[data-xw]').value,note:tr.querySelector('[data-xn]').value.trim()})});
+  if(!lines.length){U.msg('沒有要領的料（本次數量都是 0）','err');return}
+  if(!confirm('專案 '+PJ+' 建立領料單，共 '+lines.length+' 列，確定扣帳？'))return;
+  this.disabled=true;
+  try{var r=await U.api('/api/docs/issue',{project_no:PJ,doc_date:U.$('dd').value,note:U.$('note').value.trim(),lines:lines});
+    U.msg('已建立領料單 '+r.doc_no+'（'+r.lines+' 列，已扣帳）','good');U.$('extra').innerHTML='';U.$('note').value='';await load();
+  }catch(e){U.msg(e.message,'err')}finally{this.disabled=false}
+};
+U.$('dd').value=U.today();
+INVAuth.tryAutoLogin().then(function(){var p=new URLSearchParams(location.search).get('project');if(p){U.$('pj').value=p;load()}});
 </script></body></html>
