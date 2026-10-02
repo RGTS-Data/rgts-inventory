@@ -13,9 +13,9 @@ export async function onRequestGet({ request, env }) {
   const limit = Math.min(Number(u.searchParams.get('limit')) || 200, 20000);
   const where = [];
   const bind = [];
-  if (q) { where.push('(part_no LIKE ? OR name LIKE ?)'); bind.push(`%${q}%`, `%${q}%`); }
+  if (q) { where.push('(part_no LIKE ? OR name LIKE ? OR location LIKE ?)'); bind.push(`%${q}%`, `%${q}%`, `%${q}%`); }
   if (wh) { where.push('wh_code = ?'); bind.push(wh); }
-  const sql = `SELECT part_no, wh_code, wh_name, name, unit, qty, borrow_in, borrow_out, updated_at
+  const sql = `SELECT part_no, wh_code, wh_name, name, unit, qty, borrow_in, borrow_out, location, updated_at
                FROM inv_stock ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
                ORDER BY part_no, wh_code LIMIT ?`;
   const r = await env.DB.prepare(sql).bind(...bind, limit).all();

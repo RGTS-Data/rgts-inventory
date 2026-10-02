@@ -5,7 +5,7 @@
 <h2>料號查詢</h2>
 <div class="bar"><input id="p" placeholder="料號，例 CB0DVCC401" style="width:240px"><button id="go" class="pri">查詢</button><span id="info"></span></div>
 <div id="msg" class="msg"></div>
-<div class="card"><h3>各倉庫存</h3><table><thead><tr><th>倉庫</th><th>倉庫名稱</th><th class="n">現有</th><th class="n">借入</th><th class="n">借出</th><th class="n">實際在庫</th><th>更新</th></tr></thead><tbody id="st"></tbody></table></div>
+<div class="card"><h3>各倉庫存</h3><table><thead><tr><th>倉庫</th><th>倉庫名稱</th><th>儲位</th><th class="n">現有</th><th class="n">借入</th><th class="n">借出</th><th class="n">實際在庫</th><th>更新</th></tr></thead><tbody id="st"></tbody></table></div>
 <div class="card"><h3>各專案需求與領用（現行 BOM）</h3>
   <label><input type="checkbox" id="openOnly" checked> 只看未領完</label>
   <table><thead><tr><th>專案</th><th>機型</th><th class="n">台數</th><th class="n">需求</th><th class="n">已領</th><th class="n">未領</th><th>BOM 狀態</th><th></th></tr></thead><tbody id="pj"></tbody></table></div>
@@ -18,17 +18,19 @@
 var D=null;
 function render(){
   if(!D)return;var tot=0;
-  U.$('st').innerHTML=D.stock.map(function(s){var a=U.num(s.qty)+U.num(s.borrow_in)-U.num(s.borrow_out);tot+=a;return'<tr><td>'+U.esc(s.wh_code)+'</td><td>'+U.esc(s.wh_name||'')+'</td><td class="n">'+U.fmt(s.qty)+'</td><td class="n">'+U.fmt(s.borrow_in)+'</td><td class="n">'+U.fmt(s.borrow_out)+'</td><td class="n"><b>'+U.fmt(a)+'</b></td><td class="muted">'+String(s.updated_at||'').slice(0,10)+'</td></tr>'}).join('')+
-    '<tr class="sum"><td colspan="5">合計</td><td class="n">'+U.fmt(tot)+'</td><td></td></tr>';
+  U.$('st').innerHTML=D.stock.map(function(s){var a=U.num(s.qty)+U.num(s.borrow_in)-U.num(s.borrow_out);tot+=a;return'<tr><td>'+U.esc(s.wh_code)+'</td><td>'+U.esc(s.wh_name||'')+'</td><td><input data-loc="'+U.esc(s.wh_code)+'" value="'+U.esc(s.location||'')+'" placeholder="例 B4-03" style="width:90px" title="'+U.esc(s.location_by?('上次修改：'+s.location_by+' '+String(s.location_at||'').slice(0,10)):'')+'"></td><td class="n">'+U.fmt(s.qty)+'</td><td class="n">'+U.fmt(s.borrow_in)+'</td><td class="n">'+U.fmt(s.borrow_out)+'</td><td class="n"><b>'+U.fmt(a)+'</b></td><td class="muted">'+String(s.updated_at||'').slice(0,10)+'</td></tr>'}).join('')+
+    '<tr class="sum"><td colspan="6">合計</td><td class="n">'+U.fmt(tot)+'</td><td></td></tr>';
   var oo=U.$('openOnly').checked,need=0;
   U.$('pj').innerHTML=D.projects.filter(function(x){return!oo||x.remaining>0}).map(function(x){need+=x.remaining;return'<tr><td>'+U.esc(x.project_no)+'</td><td>'+U.esc(x.model||'')+'</td><td class="n">'+U.esc(x.units||'')+'</td><td class="n">'+U.fmt(x.need)+'</td><td class="n">'+U.fmt(x.issued)+'</td><td class="n"><b>'+U.fmt(x.remaining)+'</b></td><td>'+U.esc(x.bom_status||'')+'</td><td><a class="pn" href="/issue.html?project='+encodeURIComponent(x.project_no)+'">去領料</a></td></tr>'}).join('')||'<tr><td colspan="8" class="muted">沒有</td></tr>';
   var po=U.$('poOpen').checked,open=0;
   U.$('po').innerHTML=D.purchases.filter(function(x){return!po||x.open>0}).map(function(x){open+=x.open;return'<tr><td>'+U.esc(x.po_no)+'</td><td>'+U.esc(x.vendor)+'</td><td>'+U.esc(x.order_date||'')+'</td><td>'+U.esc(x.project_no||'')+'</td><td class="n">'+U.fmt(x.qty)+'</td><td class="n">'+U.fmt(x.received)+'</td><td class="n">'+U.fmt(x.pending)+'</td><td class="n"><b>'+U.fmt(x.open)+'</b></td><td class="muted">'+U.esc([x.need_date,x.vendor_eta].filter(Boolean).join('／'))+'</td><td><a class="pn" href="/receipt.html?q='+encodeURIComponent(x.po_no)+'">去進貨</a></td></tr>'}).join('')||'<tr><td colspan="10" class="muted">沒有</td></tr>';
-  U.$('mv').innerHTML=D.moves.map(function(m){return'<tr><td>'+String(m.ts).slice(0,16).replace('T',' ')+'</td><td>'+(m.doc_no?'<a class="pn" href="/docs.html?doc='+m.doc_no+'">'+m.doc_no+'</a>':'')+'</td><td>'+(U.MOVE[m.type]||m.type)+'</td><td>'+U.esc(m.wh_code)+'</td><td class="n '+(m.qty_delta<0?'err':'good')+'">'+(m.qty_delta>0?'+':'')+U.fmt(m.qty_delta)+'</td><td class="n">'+U.fmt(m.qty_after)+'</td><td>'+U.esc(m.project_no||'')+'</td><td class="muted">'+U.esc(m.created_by||'')+'</td></tr>'}).join('')||'<tr><td colspan="8" class="muted">沒有</td></tr>';
+  U.$('mv').innerHTML=D.moves.map(function(m){return'<tr><td>'+String(m.ts).slice(0,16).replace('T',' ')+'</td><td>'+(m.doc_no?'<a class="pn" href="/docs.html?doc='+m.doc_no+'">'+m.doc_no+'</a>':'')+'</td><td>'+(U.MOVE[m.type]||m.type)+(m.reverses?' <span class="tag bad">沖銷</span>':'')+'</td><td>'+U.esc(m.wh_code)+'</td><td class="n '+(m.qty_delta<0?'err':'good')+'">'+(m.qty_delta>0?'+':'')+U.fmt(m.qty_delta)+'</td><td class="n">'+U.fmt(m.qty_after)+'</td><td>'+U.esc(m.project_no||'')+'</td><td class="muted">'+U.esc(m.created_by||'')+'</td></tr>'}).join('')||'<tr><td colspan="8" class="muted">沒有</td></tr>';
   U.$('info').innerHTML='　<b>'+U.esc(D.part_no)+'</b> '+U.esc((D.stock[0]||{}).name||'')+'　｜ 在庫 <b>'+U.fmt(tot)+'</b>　專案未領 <b>'+U.fmt(need)+'</b>　採購未進 <b>'+U.fmt(open)+'</b>　→ 可用 <b class="'+(tot+open-need<0?'err':'good')+'">'+U.fmt(tot+open-need)+'</b>';
 }
 async function load(){var p=U.$('p').value.trim();if(!p)return;U.msg('查詢中…');
   try{D=await U.api('/api/part/detail?part='+encodeURIComponent(p)+'&_='+Date.now());U.msg('');render();history.replaceState(null,'','?part='+encodeURIComponent(D.part_no))}catch(e){U.msg(e.message,'err')}}
+U.$('st').addEventListener('change',async function(e){var t=e.target;if(t.dataset.loc==null)return;
+  try{var r=await U.api('/api/stock/location',{part_no:D.part_no,wh_code:t.dataset.loc,location:t.value});t.value=r.location||'';U.msg('儲位已更新：'+t.dataset.loc+' → '+(r.location||'（清除）'),'good')}catch(err){U.msg(err.message,'err')}});
 U.$('go').onclick=load;U.$('p').onkeydown=function(e){if(e.key==='Enter')load()};U.$('openOnly').onchange=render;U.$('poOpen').onchange=render;
 INVAuth.tryAutoLogin().then(function(){var p=new URLSearchParams(location.search).get('part');if(p){U.$('p').value=p;load()}});
 </script></body></html>

@@ -21,6 +21,7 @@ export function cleanRows(rows) {
       name: r.name ? String(r.name).trim() : null,
       unit: r.unit ? String(r.unit).trim() : null,
       qty: num(r.qty), borrow_in: num(r.borrow_in), borrow_out: num(r.borrow_out),
+      location: r.location != null && String(r.location).trim() ? String(r.location).trim().toUpperCase() : null,
     });
   }
   return [...m.values()];
@@ -49,13 +50,15 @@ export function buildStmts(env, list, old, { batch, ts, email }) {
   for (const x of list) {
     const prev = old.get(`${x.part}|${x.wh}`) ?? 0;
     stmts.push(env.DB.prepare(
-      `INSERT INTO inv_stock (part_no, wh_code, wh_name, name, unit, qty, borrow_in, borrow_out, import_batch, updated_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?)
+      `INSERT INTO inv_stock (part_no, wh_code, wh_name, name, unit, qty, borrow_in, borrow_out, import_batch, updated_at, location)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?)
        ON CONFLICT(part_no, wh_code) DO UPDATE SET
          wh_name=excluded.wh_name, name=excluded.name, unit=excluded.unit, qty=excluded.qty,
          borrow_in=excluded.borrow_in, borrow_out=excluded.borrow_out,
-         import_batch=excluded.import_batch, updated_at=excluded.updated_at`
-    ).bind(x.part, x.wh, x.wh_name, x.name, x.unit, x.qty, x.borrow_in, x.borrow_out, batch, ts));
+         import_batch=excluded.import_batch, updated_at=excluded.updated_at,
+         location=COALESCE(excluded.location, location)`
+    // ↑ 檔案沒有儲位欄（location=null）→ 保留系統上設定的儲位
+    ).bind(x.part, x.wh, x.wh_name, x.name, x.unit, x.qty, x.borrow_in, x.borrow_out, batch, ts, x.location));
     if (x.qty !== prev) {
       adjusted++;
       stmts.push(env.DB.prepare(

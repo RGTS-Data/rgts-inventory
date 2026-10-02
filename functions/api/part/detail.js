@@ -13,7 +13,7 @@ export async function onRequestGet({ request, env }) {
   if (!part) return err('料號必填');
 
   const stock = (await env.DB.prepare(
-    `SELECT wh_code, wh_name, name, unit, qty, borrow_in, borrow_out, updated_at FROM inv_stock WHERE part_no = ? ORDER BY wh_code`
+    `SELECT wh_code, wh_name, name, unit, qty, borrow_in, borrow_out, location, location_by, location_at, updated_at FROM inv_stock WHERE part_no = ? ORDER BY wh_code`
   ).bind(part).all()).results || [];
 
   // 各專案需求：現行 BOM（同一專案同料號多列 → 加總；劃線不算；總量沒填用單量×台數）
@@ -46,7 +46,7 @@ export async function onRequestGet({ request, env }) {
   });
 
   const moves = (await env.DB.prepare(
-    `SELECT m.ts, m.type, m.wh_code, m.qty_delta, m.qty_after, m.project_no, m.note, m.created_by, d.doc_no, d.doc_date
+    `SELECT m.ts, m.type, m.wh_code, m.qty_delta, m.qty_after, m.project_no, m.note, m.created_by, d.doc_no, d.doc_date, d.reverses
      FROM inv_moves m LEFT JOIN inv_docs d ON d.id = m.doc_id
      WHERE m.part_no = ? ORDER BY m.id DESC LIMIT 200`
   ).bind(part).all()).results || [];

@@ -40,7 +40,7 @@ function render(){
   var only=U.$('onlyLeft').checked;
   U.$('bd').innerHTML=ROWS.map(function(r,i){
     var l=leftOf(r); if(only&&l<=0&&!QTY[i])return '';
-    var whs=r.stock.length?r.stock.map(function(s){return U.esc(s.wh)+':'+U.fmt(s.qty)}).join('　'):'<span class="err">無庫存</span>';
+    var whs=r.stock.length?r.stock.map(function(s){return U.esc(s.wh)+':'+U.fmt(s.qty)+(s.loc?' <span class="tag muted">'+U.esc(s.loc)+'</span>':'')}).join('　'):'<span class="err">無庫存</span>';
     return '<tr><td><a class="pn" href="/part.html?part='+encodeURIComponent(r.part_no)+'" target="_blank">'+U.esc(r.part_no)+'</a>'+(r.spare?' <span class="tag wait">含補料</span>':'')+'</td>'+
       '<td>'+U.esc(r.name)+'<div class="muted">'+U.esc(r.spec||'')+'</div></td><td class="n">'+U.fmt(r.need)+'</td><td class="n">'+U.fmt(r.issued)+'</td>'+
       '<td class="n">'+(l>0?'<b>'+U.fmt(l)+'</b>':'<span class="tag ok">已領足</span>')+'</td><td>'+whs+'</td>'+

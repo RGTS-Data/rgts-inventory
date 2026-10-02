@@ -37,9 +37,9 @@ export async function onRequestGet({ request, env }) {
   for (const c of chunk(parts)) {
     const ph = c.map(() => '?').join(',');
     for (const s of (await env.DB.prepare(
-      `SELECT part_no, wh_code, qty FROM inv_stock WHERE part_no IN (${ph}) AND qty <> 0`
+      `SELECT part_no, wh_code, qty, location FROM inv_stock WHERE part_no IN (${ph}) AND qty <> 0`
     ).bind(...c).all()).results || []) {
-      const a = stock.get(s.part_no) || []; a.push({ wh: s.wh_code, qty: Number(s.qty) }); stock.set(s.part_no, a);
+      const a = stock.get(s.part_no) || []; a.push({ wh: s.wh_code, qty: Number(s.qty), loc: s.location || '' }); stock.set(s.part_no, a);
     }
     for (const m of (await env.DB.prepare(
       `SELECT part_no, -SUM(qty_delta) q FROM inv_moves WHERE type='issue' AND project_no = ? AND part_no IN (${ph}) GROUP BY part_no`
@@ -55,7 +55,7 @@ export async function onRequestGet({ request, env }) {
      WHERE project_id IN (SELECT id FROM bom_projects WHERE UPPER(project_no) = ?) ORDER BY id DESC LIMIT 100`
   ).bind(key).all()).results || []) : [];
   const docs = (await env.DB.prepare(
-    `SELECT doc_no, doc_type, doc_date, status, created_by, (SELECT COUNT(*) FROM inv_doc_lines l WHERE l.doc_id = d.id) AS line_count
+    `SELECT doc_no, doc_type, doc_date, status, created_by, reverses, reversed_by, (SELECT COUNT(*) FROM inv_doc_lines l WHERE l.doc_id = d.id) AS line_count
      FROM inv_docs d WHERE project_no = ? ORDER BY id DESC LIMIT 100`
   ).bind(key).all()).results || [];
   return ok({ project_no: key, bom: bp || null, rows, logs, docs });

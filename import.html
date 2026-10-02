@@ -7,7 +7,7 @@
 <p class="warn">⚠ 覆蓋：每列的現有庫存直接設成檔案的值；有差異會在流水帳留紀錄。<br>
 勾「完整覆蓋」時，<b>檔案沒有的料號／倉庫一律歸零</b>（存量明細表只列有庫存的料）。<br>
 已開始線上進料／領料後就不該再覆蓋，系統會擋下並要求輸入 OVERWRITE。</p>
-<p class="muted">欄位（按表頭名對）：產品編號、品名規格、單位、倉庫編號、倉庫名稱、現有庫存、借入數量、借出數量。.xls／.xlsx 都可以。</p>
+<p class="muted">欄位（按表頭名對）：產品編號、品名規格、單位、倉庫編號、倉庫名稱、現有庫存、借入數量、借出數量；選填「儲位」（或「細項描述」）——沒有這欄就保留系統上設定的儲位。.xls／.xlsx 都可以。</p>
 <div class="grid" style="max-width:700px">
   <label>檔案<input type="file" id="f" accept=".xlsx,.xls,.csv"></label>
   <label>資料日期（這份是哪天的庫存）<input type="date" id="dd"></label>
@@ -27,7 +27,7 @@ U.$('f').onchange=function(e){
   var r=new FileReader();r.onload=function(){
     var wb=XLSX.read(r.result,{type:'array'});var ws=wb.Sheets[wb.SheetNames[0]];
     var j=XLSX.utils.sheet_to_json(ws,{defval:'',raw:false});   // raw:false＝看到什麼拿什麼（純數字料號不掉前導 0）
-    rows=j.map(function(o){return{part_no:o['產品編號'],name:o['品名規格'],unit:o['單位'],wh_code:o['倉庫編號'],wh_name:o['倉庫名稱'],qty:o['現有庫存'],borrow_in:o['借入數量'],borrow_out:o['借出數量']}})
+    rows=j.map(function(o){return{part_no:o['產品編號'],name:o['品名規格'],unit:o['單位'],wh_code:o['倉庫編號'],wh_name:o['倉庫名稱'],qty:o['現有庫存'],borrow_in:o['借入數量'],borrow_out:o['借出數量'],location:o['儲位']||o['細項描述']||''}})
       .filter(function(x){return String(x.part_no).trim()&&String(x.wh_code).trim()});
     U.$('log').textContent='「'+fname+'」分頁「'+wb.SheetNames[0]+'」讀到 '+rows.length+' 列（有效）';
     if(!rows.length)log('⚠ 沒讀到資料：請確認表頭有「產品編號」「倉庫編號」「現有庫存」');
