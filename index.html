@@ -1,42 +1,33 @@
 <!doctype html>
 <html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>庫存總表</title>
+<link rel="stylesheet" href="/_lib/app.css">
 <style>
-:root{--bd:#d9d9d9;--hd:#f3f5f8;--hi:#fff8d6;--ac:#2563eb}
-*{box-sizing:border-box}
-body{font:13px system-ui,-apple-system,"Microsoft JhengHei",sans-serif;margin:0;padding:12px 16px;color:#222;background:#fff}
-h2{margin:4px 0 8px;font-size:18px}
-h2 small{font-weight:normal;font-size:13px;margin-left:8px}
-.bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:8px}
-.bar input[type=search]{padding:5px 8px;width:220px;border:1px solid var(--bd);border-radius:4px}
-button{padding:5px 10px;border:1px solid #bbb;border-radius:4px;background:#fff;cursor:pointer;font:inherit}
-button:hover{background:#f2f2f2}
-#syncmsg{color:#555}#last{color:#888;font-size:12px}
-.wrap{overflow:auto;max-height:calc(100vh - 150px);border:1px solid var(--bd)}
-table{border-collapse:separate;border-spacing:0;table-layout:fixed}
-th,td{border-right:1px solid var(--bd);border-bottom:1px solid var(--bd);padding:3px 6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-thead th{position:sticky;top:0;background:var(--hd);z-index:2;text-align:left;user-select:none}
+/* 本頁獨有：總表格線、凍結欄、欄寬拖曳、篩選彈出框（共用樣式在 /_lib/app.css） */
+.bar input[type=search]{width:240px}
+#syncmsg{color:var(--label)}#last{color:var(--muted);font-size:12px;margin-bottom:8px}
+.wrap{overflow:auto;max-height:calc(100vh - 175px);border:1px solid var(--line);border-radius:12px;background:var(--panel)}
+.wrap table{border-collapse:separate;border-spacing:0;table-layout:fixed;width:auto}
+.wrap th,.wrap td{border-right:1px solid var(--line);border-bottom:1px solid var(--line);padding:4px 8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:13px}
+.wrap thead th{position:sticky;top:0;background:var(--hd);z-index:2;user-select:none;font-size:12px}
 th .lbl{cursor:pointer}th .lbl:hover{color:var(--ac)}
-th .fb{float:right;border:0;background:none;padding:0 2px;color:#888;cursor:pointer}
-th .fb.on{color:#fff;background:var(--ac);border-radius:3px}
+th .fb{float:right;border:0;background:none;padding:0 3px;color:var(--muted);cursor:pointer;font-weight:400}
+th .fb.on{color:#fff;background:var(--ac);border-radius:4px}
 th .rs{position:absolute;right:-3px;top:0;bottom:0;width:7px;cursor:col-resize;z-index:3}
-th{position:sticky}
-td.n,th.n{text-align:right}
-td:first-child,th:first-child{position:sticky;left:0;background:#fff;z-index:1}
-thead th:first-child{z-index:4;background:var(--hd)}
-tbody tr:hover td{background:var(--hi)}
-tfoot td{position:sticky;bottom:0;background:var(--hd);font-weight:bold}
-.vm{position:absolute;z-index:50;background:#fff;border:1px solid #bbb;box-shadow:0 4px 16px rgba(0,0,0,.15);border-radius:6px;width:280px;padding:8px}
+.wrap td:first-child,.wrap th:first-child{position:sticky;left:0;background:var(--panel);z-index:1}
+.wrap thead th:first-child{z-index:4;background:var(--hd)}
+.wrap tbody tr:hover td{background:var(--hi)}
+.wrap tfoot td{position:sticky;bottom:0;background:var(--hd);font-weight:700}
+.vm{position:absolute;z-index:50;background:#fff;border:1px solid var(--line2);box-shadow:0 8px 24px rgba(15,23,42,.15);border-radius:12px;width:290px;padding:10px}
 .vm .vmh{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
-.vm .vmact button{padding:2px 6px;font-size:12px}
-.vm input{width:100%;padding:4px 6px;margin-bottom:6px;border:1px solid var(--bd);border-radius:4px}
-.vm .vml{max-height:300px;overflow:auto;border-top:1px solid #eee;padding-top:4px}
-.vm label{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:1px 0}
-.vm .note{color:#888;font-size:12px;margin:4px 0}
+.vm .vmact button,.vm button{padding:3px 8px;font-size:12px}
+.vm input{width:100%;padding:5px 8px;margin-bottom:6px}
+.vm .vml{max-height:300px;overflow:auto;border-top:1px solid var(--line);padding-top:4px}
+.vm label{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:1px 0;color:var(--ink)}
+.vm .note{color:var(--muted);font-size:12px;margin:4px 0}
 .vm .ft{display:flex;justify-content:flex-end;gap:6px;margin-top:6px}
-.empty{padding:20px;color:#888}
-a.pn{color:#2563eb;text-decoration:none}a.pn:hover{text-decoration:underline}
-td.loc{cursor:pointer}td.loc:hover{background:#eef4ff}
+.empty{padding:20px;color:var(--muted)}
+td.loc{cursor:pointer}td.loc:hover{background:var(--sel)}
 </style></head><body>
 <script src="/_lib/nav.js"></script>
 <h2>庫存總表</h2>
