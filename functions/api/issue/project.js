@@ -49,5 +49,14 @@ export async function onRequestGet({ request, env }) {
     const st = stock.get(p) || [];
     return { ...need.get(p), stock: st, on_hand: st.reduce((s, x) => s + x.qty, 0), issued: issued.get(p) || 0 };
   });
-  return ok({ project_no: key, bom: bp || null, rows });
+  // BOM 異動紀錄（bom-tool 的 bom_logs，唯讀）＋本專案庫存單據
+  const logs = bp ? ((await env.DB.prepare(
+    `SELECT ts, actor, action, field, old_value, new_value, summary FROM bom_logs
+     WHERE project_id IN (SELECT id FROM bom_projects WHERE UPPER(project_no) = ?) ORDER BY id DESC LIMIT 100`
+  ).bind(key).all()).results || []) : [];
+  const docs = (await env.DB.prepare(
+    `SELECT doc_no, doc_type, doc_date, status, created_by, (SELECT COUNT(*) FROM inv_doc_lines l WHERE l.doc_id = d.id) AS line_count
+     FROM inv_docs d WHERE project_no = ? ORDER BY id DESC LIMIT 100`
+  ).bind(key).all()).results || [];
+  return ok({ project_no: key, bom: bp || null, rows, logs, docs });
 }

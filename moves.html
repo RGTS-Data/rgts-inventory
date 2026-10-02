@@ -5,7 +5,7 @@
 <h2>異動流水帳</h2>
 <div class="bar">
   <input id="part" placeholder="料號"><input id="proj" placeholder="專案號">
-  <select id="type"><option value="">全部類型</option><option value="receipt">進料</option><option value="issue">領料</option><option value="import_adjust">匯入覆蓋差額</option></select>
+  <select id="type"><option value="">全部類型</option><option value="receipt">進料</option><option value="issue">領料</option><option value="transfer_out">調出</option><option value="transfer_in">調入</option><option value="import_adjust">匯入覆蓋差額</option></select>
   <button id="go" class="pri">查詢</button><span id="info" class="muted"></span>
 </div>
 <table><thead><tr><th>時間</th><th>類型</th><th>料號</th><th>倉</th><th class="n">異動</th><th class="n">異動後</th><th>專案</th><th>採購明細 / 發票</th><th>備註</th><th>操作人</th></tr></thead>
@@ -14,7 +14,7 @@
 <script>
 var $=function(i){return document.getElementById(i)};
 var esc=function(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})};
-var T={receipt:'<span class="tag ok">進料</span>',issue:'<span class="tag bad">領料</span>',import_adjust:'<span class="tag wait">匯入</span>'};
+var T={receipt:'<span class="tag ok">進料</span>',issue:'<span class="tag bad">領料</span>',transfer_out:'<span class="tag bad">調出</span>',transfer_in:'<span class="tag ok">調入</span>',import_adjust:'<span class="tag wait">匯入</span>'};
 async function load(){
   var u='/api/moves/list?limit=500&part='+encodeURIComponent($('part').value.trim())+'&project='+encodeURIComponent($('proj').value.trim())+'&type='+$('type').value+'&_='+Date.now();
   var d=await (await INVAuth.authedFetch(u)).json();

@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>單據查詢</title><link rel="stylesheet" href="/_lib/app.css"></head><body>
+<script src="/_lib/nav.js"></script>
+<h2>單據查詢／進貨核對</h2>
+<div class="bar">
+  <select id="type"><option value="">全部單據</option><option value="receipt">進貨單</option><option value="issue">領料單</option><option value="transfer">調撥單</option></select>
+  <select id="status"><option value="">全部狀態</option><option value="pending">待核對</option><option value="posted">已過帳</option><option value="rejected">退回</option><option value="void">作廢</option></select>
+  <input type="date" id="from"> ~ <input type="date" id="to">
+  <input id="q" placeholder="單號／廠商／發票／專案／料號／採購單號" style="width:260px">
+  <button id="go" class="pri">查詢</button><span id="info" class="muted"></span>
+</div>
+<div id="msg" class="msg"></div>
+<table><thead><tr><th>單號</th><th>類型</th><th>日期</th><th>狀態</th><th>廠商／專案</th><th>發票</th><th class="n">發票金額</th><th class="n">採購金額</th><th class="n">列數</th><th class="n">數量</th><th>製單</th></tr></thead><tbody id="bd"></tbody></table>
+<div id="detail"></div>
+<script src="/_lib/auth.js"></script><script src="/_lib/common.js"></script>
+<script>
+var CAN=false;
+async function load(){
+  var q=['type','status','from','to','q'].map(function(k){return k+'='+encodeURIComponent(U.$(k).value.trim())}).join('&');
+  try{var d=await U.api('/api/docs/list?'+q+'&_='+Date.now());CAN=d.can_check;
+    U.$('info').textContent=d.rows.length+' 張'+(CAN?'　｜ 你可以核對進貨單':'');
+    U.$('bd').innerHTML=d.rows.map(function(x){
+      var diff=x.doc_type==='receipt'?Math.round((U.num(x.invoice_amount)-U.num(x.amount_total))*100)/100:0;
+      return '<tr><td><a class="pn" href="#" data-doc="'+x.doc_no+'">'+x.doc_no+'</a></td><td>'+U.TYPE[x.doc_type]+'</td><td>'+x.doc_date+'</td><td>'+(U.STATUS[x.status]||x.status)+'</td>'+
+        '<td>'+U.esc(x.vendor||x.project_no||'')+'</td><td>'+U.esc(x.invoice_no||'')+'</td>'+
+        '<td class="n">'+(x.doc_type==='receipt'?U.fmt(x.invoice_amount):'')+'</td><td class="n">'+(x.doc_type==='receipt'?U.fmt(x.amount_total)+(Math.abs(diff)>1?' <span class="err">差 '+U.fmt(diff)+'</span>':''):'')+'</td>'+
+        '<td class="n">'+x.line_count+'</td><td class="n">'+U.fmt(x.qty_total)+'</td><td class="muted">'+U.esc(x.created_by)+'</td></tr>'}).join('')||'<tr><td colspan="11" class="muted">沒有單據</td></tr>';
+  }catch(e){U.msg(e.message,'err')}
+}
+async function show(no){
+  try{var d=await U.api('/api/docs/get?doc_no='+encodeURIComponent(no)+'&_='+Date.now()),h=d.doc,R=h.doc_type==='receipt',T=h.doc_type==='transfer';
+    var tot=d.lines.reduce(function(s,l){return s+U.num(l.amount)},0);
+    var act='';
+    if(R&&h.status==='pending'){
+      act=CAN?'<p><input id="cnote" placeholder="核對備註（退回請寫原因）" style="width:300px"> <button class="pri" data-act="approve">✓ 核對一致，過帳入庫</button> <button data-act="reject">✗ 退回</button></p>'
+             :'<p class="muted">待阿國核對。</p>';
+      act+='<p><button data-act="void">作廢這張單</button></p>';
+    } else if(R&&h.status==='rejected') act='<p class="err">退回原因：'+U.esc(h.check_note||'')+'</p><p><button data-act="void">作廢這張單</button>（修正後請重開一張）</p>';
+    U.$('detail').innerHTML='<div class="card"><h3>'+U.TYPE[h.doc_type]+' '+h.doc_no+'　'+(U.STATUS[h.status]||h.status)+'</h3>'+
+      '<div class="grid"><div>日期：'+h.doc_date+'</div>'+(R?'<div>廠商：'+U.esc(h.vendor)+'</div><div>發票：'+U.esc(h.invoice_no)+'</div><div>發票未稅：'+U.fmt(h.invoice_amount)+'</div><div>採購未稅合計：'+U.fmt(tot)+'</div>':'<div>專案：'+U.esc(h.project_no||'')+'</div>')+
+      '<div>製單：'+U.esc(h.created_by)+'</div>'+(h.checked_by?'<div>核對：'+U.esc(h.checked_by)+'</div>':'')+(h.posted_at?'<div>過帳：'+h.posted_at.slice(0,16).replace('T',' ')+'</div>':'')+'<div style="grid-column:span 2">備註：'+U.esc(h.note||'')+'</div></div>'+
+      '<table style="margin-top:8px"><thead><tr><th>#</th><th>料號</th><th>品名</th><th class="n">數量</th><th>'+(T?'撥出倉</th><th>撥入倉':'倉庫')+'</th>'+(R?'<th>來源採購單</th><th class="n">單價</th><th class="n">金額</th>':'')+'<th>備註</th></tr></thead><tbody>'+
+      d.lines.map(function(l){return'<tr><td>'+l.seq+'</td><td><a class="pn" href="/part.html?part='+encodeURIComponent(l.part_no||'')+'">'+U.esc(l.part_no)+'</a></td><td>'+U.esc(l.name||'')+'</td><td class="n">'+U.fmt(l.qty)+'</td><td>'+U.esc(l.wh_code||'')+'</td>'+(T?'<td>'+U.esc(l.to_wh||'')+'</td>':'')+(R?'<td>'+U.esc(l.po_no||'')+'</td><td class="n">'+U.fmt(l.unit_price)+'</td><td class="n">'+U.fmt(l.amount)+'</td>':'')+'<td>'+U.esc(l.note||'')+'</td></tr>'}).join('')+
+      '</tbody></table>'+act+'</div>';
+    U.$('detail').querySelectorAll('[data-act]').forEach(function(b){b.onclick=async function(){
+      var a=b.dataset.act;
+      try{
+        if(a==='void'){if(!confirm('作廢 '+no+'？'))return;await U.api('/api/docs/void',{doc_no:no});}
+        else{if(a==='approve'&&!confirm('確認發票與採購金額一致，過帳入庫？'))return;
+          await U.api('/api/docs/check',{doc_no:no,action:a,note:(U.$('cnote')||{}).value||''});}
+        U.msg(no+(a==='approve'?' 已過帳入庫':a==='reject'?' 已退回':' 已作廢'),'good');load();show(no);
+      }catch(e){U.msg(e.message,'err')}
+    }});
+    U.$('detail').scrollIntoView({behavior:'smooth'});
+  }catch(e){U.msg(e.message,'err')}
+}
+U.$('go').onclick=load;U.$('q').onkeydown=function(e){if(e.key==='Enter')load()};
+U.$('bd').onclick=function(e){var a=e.target.closest('[data-doc]');if(!a)return;e.preventDefault();show(a.dataset.doc)};
+INVAuth.tryAutoLogin().then(async function(){
+  var sp=new URLSearchParams(location.search);if(sp.get('status'))U.$('status').value=sp.get('status');
+  await load();if(sp.get('doc'))show(sp.get('doc'));
+});
+</script></body></html>

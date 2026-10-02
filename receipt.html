@@ -1,64 +1,96 @@
 <!doctype html>
 <html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>進料入庫</title><link rel="stylesheet" href="/_lib/app.css"></head><body>
+<title>進貨單</title><link rel="stylesheet" href="/_lib/app.css"></head><body>
 <script src="/_lib/nav.js"></script>
-<h2>進料入庫</h2>
-<p class="muted">流程：① 阿國核對「廠商發票金額＝採購單金額」→ ② 通過的列才能入庫（不可超收）。採購總表的到貨日目前<b>不會</b>回寫。</p>
-<div class="bar">
-  <input id="q" placeholder="採購單號 / 料號 / 廠商 / 專案" style="width:280px">
-  <label><input type="checkbox" id="all"> 含已入滿</label>
-  <button id="go" class="pri">查詢</button>
-  <span id="info" class="muted"></span>
+<h2>進貨單（從採購單帶入）</h2>
+<p class="muted">① 查採購單 → 勾要進貨的明細、填數量 → ② 填發票號碼與發票未稅金額 → 存成「待核對」→ ③ 阿國在「單據查詢／核對」核對金額一致才入庫。採購總表到貨日目前<b>不會</b>回寫。</p>
+
+<div class="card">
+  <h3>① 查採購單</h3>
+  <div class="bar">
+    <input id="q" placeholder="採購單號 / 料號 / 廠商 / 專案" style="width:280px">
+    <label><input type="checkbox" id="all"> 含已入滿</label>
+    <button id="go" class="pri">查詢</button>
+    <span id="info" class="muted"></span>
+  </div>
+  <div style="max-height:45vh;overflow:auto">
+  <table><thead><tr>
+    <th><input type="checkbox" id="ckall" title="全選"></th><th>採購單號</th><th>廠商</th><th>料號</th><th>品名規格</th><th>專案</th>
+    <th class="n">採購量</th><th class="n">已入</th><th class="n">待核對</th><th class="n">本次數量</th><th>入庫倉</th><th class="n">單價</th><th class="n">金額</th>
+  </tr></thead><tbody id="bd"><tr><td colspan="13" class="muted">輸入條件查詢</td></tr></tbody></table>
+  </div>
 </div>
-<div id="msg" class="msg"></div>
-<table><thead><tr>
-  <th>採購單號</th><th>廠商</th><th>料號</th><th>品名規格</th><th>專案</th>
-  <th class="n">採購量</th><th class="n">已入</th><th class="n">金額</th><th>發票核對</th><th>入庫</th>
-</tr></thead><tbody id="bd"><tr><td colspan="10" class="muted">輸入條件查詢</td></tr></tbody></table>
-<script src="/_lib/auth.js"></script>
+
+<div class="card">
+  <h3>② 進貨單表頭</h3>
+  <div class="grid">
+    <label>進貨日期<input type="date" id="dd"></label>
+    <label>廠商<input id="vendor" readonly placeholder="勾選明細後自動帶入"></label>
+    <label>發票號碼 *<input id="inv" placeholder="例 EC52728269"></label>
+    <label>發票未稅金額 *<input id="amt" placeholder="與採購金額差 ≤1 元才可入庫"></label>
+    <label style="grid-column:span 2">備註<input id="note"></label>
+  </div>
+  <p>已選 <b id="cnt">0</b> 列，採購未稅合計 <b id="tot">0</b>　<span id="diff"></span></p>
+  <button id="save" class="pri">存成進貨單（待核對）</button>
+  <div id="msg" class="msg"></div>
+</div>
+
+<script src="/_lib/auth.js"></script><script src="/_lib/common.js"></script>
 <script>
-var $=function(i){return document.getElementById(i)};
-var esc=function(s){return String(s==null?'':s).replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]})};
-var CAN_GATE=false, ROWS=[];
-function msg(t,cls){$('msg').className='msg '+(cls||'');$('msg').textContent=t}
-async function api(u,body){var r=await INVAuth.authedFetch(u,body?{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify(body)}:{});
-  var d={};try{d=await r.json()}catch(e){} if(!r.ok||!d.ok)throw new Error(d.error||('HTTP '+r.status));return d}
-function gateCell(x){
-  var g=x.gate, s=g?(g.status==='ok'?'<span class="tag ok">✓ 一致</span>':'<span class="tag bad">✗ 不符</span>'):'<span class="tag wait">待核對</span>';
-  if(g) s+='<div class="muted">發票 '+esc(g.invoice_no)+' / '+esc(g.invoice_amount)+'</div>';
-  if(CAN_GATE) s+='<div><input data-inv="'+x.id+'" placeholder="發票號" style="width:110px" value="'+esc(g?g.invoice_no:(x.invoice_no||''))+'"> '+
-    '<input data-amt="'+x.id+'" placeholder="發票金額" style="width:90px" value="'+esc(g?g.invoice_amount:'')+'"> <button data-gate="'+x.id+'">核對</button></div>';
-  return s;
-}
+var ROWS=[], SEL={};   // SEL[id] = {qty, wh}
+function key(x){return String(x.id)}
+function left(x){return Math.max(0,U.num(x.qty)-x.received-x.pending)}
 function render(){
-  $('bd').innerHTML=ROWS.map(function(x){
-    var left=(Number(x.qty)||0)-x.received, ok=x.gate&&x.gate.status==='ok';
-    return '<tr><td>'+esc(x.po_no)+'<div class="muted">'+esc(x.order_date||'')+'</div></td><td>'+esc(x.vendor)+'</td><td>'+esc(x.part_no)+'</td>'+
-      '<td>'+esc(x.name)+'<div class="muted">'+esc(x.spec||'')+'</div></td><td>'+esc(x.project_no||'')+'</td>'+
-      '<td class="n">'+esc(x.qty)+'</td><td class="n">'+x.received+'</td><td class="n">'+esc(x.amount)+' '+esc(x.currency||'')+'</td>'+
-      '<td>'+gateCell(x)+'</td><td>'+(left>0?(ok?'<input class="q" data-qty="'+x.id+'" value="'+left+'"> <select data-wh="'+x.id+'"><option>Z</option><option>HR</option><option>RD</option><option>O</option></select> <button class="pri" data-in="'+x.id+'">入庫</button>':'<span class="muted">需先核對發票</span>'):'<span class="tag ok">已入滿</span>')+'</td></tr>';
-  }).join('')||'<tr><td colspan="10" class="muted">沒有符合的採購明細</td></tr>';
+  U.$('bd').innerHTML=ROWS.map(function(x){
+    var s=SEL[key(x)], l=left(x), dis=l<=0?' disabled':'';
+    return '<tr class="'+(s?'sel':'')+'"><td><input type="checkbox" data-ck="'+x.id+'"'+(s?' checked':'')+dis+'></td>'+
+      '<td>'+U.esc(x.po_no)+'<div class="muted">'+U.esc(x.order_date||'')+'</div></td><td>'+U.esc(x.vendor)+'</td>'+
+      '<td><a class="pn" href="/part.html?part='+encodeURIComponent(x.part_no)+'" target="_blank">'+U.esc(x.part_no)+'</a></td>'+
+      '<td>'+U.esc(x.name)+'<div class="muted">'+U.esc(x.spec||'')+'</div></td><td>'+U.esc(x.project_no||'')+'</td>'+
+      '<td class="n">'+U.fmt(x.qty)+'</td><td class="n">'+U.fmt(x.received)+'</td><td class="n">'+(x.pending?'<span class="tag wait">'+U.fmt(x.pending)+'</span>':'0')+'</td>'+
+      '<td class="n"><input class="q" data-qty="'+x.id+'" value="'+(s?s.qty:l)+'"'+dis+'></td><td>'+U.whSel('data-wh="'+x.id+'"'+dis,s?s.wh:'Z')+'</td>'+
+      '<td class="n">'+U.fmt(x.unit_price)+'</td><td class="n" data-amt="'+x.id+'">'+U.fmt(U.num(x.unit_price)*(s?s.qty:l))+'</td></tr>';
+  }).join('')||'<tr><td colspan="13" class="muted">沒有符合的採購明細</td></tr>';
+  summary();
+}
+function summary(){
+  var ids=Object.keys(SEL), tot=0, vend={};
+  ids.forEach(function(id){var x=ROWS.find(function(r){return String(r.id)===id});if(!x)return;tot+=U.num(x.unit_price)*SEL[id].qty;vend[x.vendor]=1});
+  tot=Math.round(tot*100)/100;
+  U.$('cnt').textContent=ids.length;U.$('tot').textContent=U.fmt(tot);
+  var vs=Object.keys(vend);U.$('vendor').value=vs.join('、');
+  var a=U.$('amt').value.trim(), d=U.$('diff');
+  if(vs.length>1){d.innerHTML='<span class="err">⚠ 一張進貨單只能同一家廠商</span>';return}
+  if(a===''){d.textContent='';return}
+  var df=Math.round((U.num(a)-tot)*100)/100;
+  d.innerHTML=Math.abs(df)<=1?'<span class="good">✓ 發票與採購金額一致</span>':'<span class="err">差 '+U.fmt(df)+'（不一致，阿國核對時會擋）</span>';
 }
 async function search(){
-  msg('查詢中…');
-  try{var d=await api('/api/receipt/lines?q='+encodeURIComponent($('q').value.trim())+($('all').checked?'&all=1':'')+'&_='+Date.now());
-    CAN_GATE=d.can_gate;ROWS=d.rows;render();msg('');
-    $('info').textContent=ROWS.length+' 列'+(d.truncated?'（結果太多只列前 300，請縮小條件）':'')+(CAN_GATE?'':'　｜ 發票核對限採購（阿國）操作');
-  }catch(e){msg(e.message,'err')}
+  if(!/^已建立/.test(U.$('msg').textContent))U.msg('查詢中…');
+  try{var d=await U.api('/api/receipt/lines?q='+encodeURIComponent(U.$('q').value.trim())+(U.$('all').checked?'&all=1':'')+'&_='+Date.now());
+    ROWS=d.rows;render();if(/中…$/.test(U.$('msg').textContent))U.msg('');U.$('info').textContent=ROWS.length+' 列'+(d.truncated?'（只列前 300，請縮小條件）':'');
+  }catch(e){U.msg(e.message,'err')}
 }
-$('go').onclick=search;$('q').onkeydown=function(e){if(e.key==='Enter')search()};
-$('bd').onclick=async function(e){
-  var b=e.target.closest('button');if(!b)return;
-  try{
-    if(b.dataset.gate){var id=+b.dataset.gate;
-      var d=await api('/api/receipt/gate',{po_line_id:id,invoice_no:document.querySelector('[data-inv="'+id+'"]').value.trim(),
-        invoice_amount:Number(document.querySelector('[data-amt="'+id+'"]').value.replace(/,/g,''))});
-      msg(d.status==='ok'?'核對通過，可以入庫':'金額不符：採購單 '+d.po_amount+'，發票 '+d.invoice_amount,d.status==='ok'?'good':'err');search();}
-    if(b.dataset.in){var id2=+b.dataset.in, q=Number(document.querySelector('[data-qty="'+id2+'"]').value), wh=document.querySelector('[data-wh="'+id2+'"]').value;
-      if(!confirm('入庫 '+q+' 到倉庫 '+wh+'？'))return;b.disabled=true;
-      var r=await api('/api/receipt/post',{po_line_id:id2,qty:q,wh_code:wh});
-      msg('已入庫：'+r.part_no+' ×'+q+' → '+wh+'（累計 '+r.received+'）','good');search();}
-  }catch(err){msg(err.message,'err');b.disabled=false}
+U.$('go').onclick=search;U.$('q').onkeydown=function(e){if(e.key==='Enter')search()};
+U.$('bd').addEventListener('change',function(e){
+  var t=e.target,id=t.dataset.ck||t.dataset.qty||t.dataset.wh;if(!id)return;
+  var x=ROWS.find(function(r){return String(r.id)===id});
+  if(t.dataset.ck){ if(t.checked)SEL[id]={qty:U.num(document.querySelector('[data-qty="'+id+'"]').value),wh:document.querySelector('[data-wh="'+id+'"]').value}; else delete SEL[id]; render(); return; }
+  if(t.dataset.qty){ var q=U.num(t.value); if(SEL[id])SEL[id].qty=q; document.querySelector('[data-amt="'+id+'"]').textContent=U.fmt(U.num(x.unit_price)*q); summary(); }
+  if(t.dataset.wh && SEL[id]) SEL[id].wh=t.value;
+});
+U.$('ckall').onchange=function(){var on=this.checked;ROWS.forEach(function(x){if(left(x)<=0)return;var id=key(x);if(on)SEL[id]=SEL[id]||{qty:left(x),wh:'Z'};else delete SEL[id]});render()};
+U.$('amt').oninput=summary;
+U.$('save').onclick=async function(){
+  var ids=Object.keys(SEL);if(!ids.length){U.msg('請先勾選要進貨的明細','err');return}
+  var body={doc_date:U.$('dd').value,invoice_no:U.$('inv').value.trim(),invoice_amount:U.$('amt').value.trim(),note:U.$('note').value.trim(),
+    lines:ids.map(function(id){return{po_line_id:+id,qty:SEL[id].qty,wh_code:SEL[id].wh}})};
+  if(!body.invoice_no||!body.invoice_amount){U.msg('發票號碼與發票未稅金額必填','err');return}
+  this.disabled=true;
+  try{var r=await U.api('/api/docs/receipt',body);
+    U.msg('已建立進貨單 '+r.doc_no+'（待阿國核對，核對通過才入庫）','good');SEL={};U.$('inv').value='';U.$('amt').value='';U.$('note').value='';search();
+  }catch(e){U.msg(e.message,'err')}finally{this.disabled=false}
 };
-INVAuth.tryAutoLogin();
+U.$('dd').value=U.today();
+INVAuth.tryAutoLogin().then(function(){var q=new URLSearchParams(location.search).get('q');if(q){U.$('q').value=q;search()}});
 </script></body></html>

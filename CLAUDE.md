@@ -224,7 +224,8 @@ Chris 說出 **「開始會議」「會議開始」「會議中」「現在會�
 RGTS 庫存系統：進料／領料／扣帳，連動 bom-tool 採購總表。Cloudflare Pages + Functions + D1（共用 `rgts-pi-db`）。
 
 ## 架構
-- 只**唯讀** `purchase_orders` / `purchase_lines` / `projects`；只寫自己的 `inv_*` 表（`migrations/0001_inventory.sql`）。
-- 頁面：`/` 庫存總表、`/receipt.html` 進料、`/issue.html` 領料、`/moves.html` 流水帳、`/import.html` Excel 匯入。
-- `functions/api/`：`stock/list`、`import/stock`、`admin/sync-sheet`（Google Sheet 同步）、`admin/last-sync`、`receipt/{lines,gate,post}`、`issue/{project,post}`、`moves/list`。
+- 只**唯讀** `purchase_orders` / `purchase_lines` / `projects` / `bom_*`；只寫自己的 `inv_*` 表（`migrations/0001`、`0002`）。
+- 單據照 Willy 的正航日常作業（2026-10-02）：**進貨單**（從採購單帶入、發票在表頭；存成「待核對」→ 阿國核對金額一致才過帳入庫）、**領料單**（依專案 BOM，建單即扣帳）、**調撥單**（倉別互調，建單即過帳）。
+- 頁面：`/` 庫存總表、`/part.html` 料號查詢、`/receipt.html` 進貨單、`/issue.html` 領料單、`/transfer.html` 調撥單、`/docs.html` 單據查詢／核對、`/moves.html` 流水帳、`/import.html` Excel 匯入。
+- `functions/api/`：`stock/{list,sheet-check}`、`import/{stock,finish}`、`admin/{sync-sheet,last-sync}`、`receipt/lines`、`docs/{receipt,check,issue,transfer,void,list,get}`、`issue/project`、`part/detail`、`moves/list`。
 - 認證模型同 rgts-pmc（CF Access JWT 或 `X-Admin-Token`）。

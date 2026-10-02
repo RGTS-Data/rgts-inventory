@@ -14,7 +14,8 @@ import { requireAuth } from '../_lib/auth.js';
 import { ok, err } from '../_lib/json.js';
 import { nowIso } from '../_lib/util.js';
 import { readStockSheet } from '../_lib/sheet.js';
-import { cleanRows, loadOld, buildStmts, importLogStmt } from '../_lib/stock-upsert.js';
+import { onlineStarted } from '../_lib/docs.js';
+import { cleanRows, loadOld, buildStmts, importLogStmt, latestDataDate } from '../_lib/stock-upsert.js';
 
 const ROWS_PER_BATCH = 100; // 每個 D1 batch 最多 ~200 句（upsert＋可能的 adjust）
 
@@ -36,24 +37,28 @@ export async function onRequestPost({ request, env }) {
   const batch = 'sync-' + nowIso();
   const email = user.email;
   if (!force) {
-    const on = await env.DB.prepare(
-      `SELECT COUNT(*) AS n, MIN(ts) AS first_ts FROM inv_moves WHERE type IN ('receipt','issue')`
-    ).first();
-    if (Number(on?.n) > 0) {
-      if (!dry) {
-        await importLogStmt(env, { batch, ts: nowIso(), source: 'sync-skip:已線上進出料', rows: 0, email }).run();
-      }
+    const on = await onlineStarted(env);
+    if (on.n > 0) {
+      if (!dry) await importLogStmt(env, { batch, ts: nowIso(), source: 'sync-skip:已線上進出料', rows: 0, email }).run();
       return err(`已開始線上進出料（${on.n} 筆，最早 ${String(on.first_ts).slice(0, 10)}），覆蓋同步已停止`, 409,
-        { code: 'online_started', moves: Number(on.n), first_ts: on.first_ts });
+        { code: 'online_started', moves: on.n, first_ts: on.first_ts });
     }
   }
-
   let tab, raw, missing;
   try {
     ({ tab, raw, missing } = await readStockSheet(env));
   } catch (e) {
     if (!dry) await logFail(env, batch, e.message, email);
     return err(e.message, 502);
+  }
+  // 資料日期：分頁名 YYMMDD → 20YY-MM-DD。比目前庫存的資料日期舊（或一樣）就不覆蓋（例 260629 不准蓋 10/02 的存量明細表）
+  const dataDate = /^\d{6}$/.test(String(tab)) ? `20${tab.slice(0, 2)}-${tab.slice(2, 4)}-${tab.slice(4, 6)}` : null;
+  if (!force) {
+    const cur = await latestDataDate(env);
+    if (cur && (!dataDate || dataDate <= cur)) {
+      if (!dry) await importLogStmt(env, { batch, ts: nowIso(), source: `sync-skip:分頁${tab}不比現有${cur}新`, rows: 0, email }).run();
+      return err(`Sheet 分頁「${tab}」不比目前庫存的資料日期 ${cur} 新，不覆蓋`, 409, { code: 'older_data', tab, current: cur });
+    }
   }
   if (missing.length) {
     if (!dry) await logFail(env, batch, '缺欄位 ' + missing.join('/'), email);
@@ -89,6 +94,6 @@ export async function onRequestPost({ request, env }) {
       return err(`寫入失敗（已寫 ${i} 列，可重跑）：${e.message}`, 500);
     }
   }
-  await importLogStmt(env, { batch, ts, source: 'sheet:' + tab, rows: list.length, email }).run();
+  await importLogStmt(env, { batch, ts, source: 'sheet:' + tab, rows: list.length, email, dataDate }).run();
   return ok({ batch, tab, rows: list.length, adjusted, ...stats });
 }

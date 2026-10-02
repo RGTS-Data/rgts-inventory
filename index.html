@@ -35,11 +35,13 @@ tfoot td{position:sticky;bottom:0;background:var(--hd);font-weight:bold}
 .vm .note{color:#888;font-size:12px;margin:4px 0}
 .vm .ft{display:flex;justify-content:flex-end;gap:6px;margin-top:6px}
 .empty{padding:20px;color:#888}
+a.pn{color:#2563eb;text-decoration:none}a.pn:hover{text-decoration:underline}
 </style></head><body>
 <script src="/_lib/nav.js"></script>
 <h2>庫存總表</h2>
 <div class="bar">
   <input id="q" type="search" placeholder="搜尋料號 / 品名">
+  <label><input type="checkbox" id="hz" checked> 隱藏 0 庫存</label>
   <button id="clr">✕ 清除所有篩選</button>
   <button id="xls">📊 匯出 Excel</button>
   <button id="cw">↔ 欄寬重設</button>
@@ -97,6 +99,7 @@ tfoot td{position:sticky;bottom:0;background:var(--hd);font-weight:bold}
 
   // ── 篩選：搜尋框＋每欄勾選值；except 用來算「連動」候選值
   function pass(r,except){
+    if($('hz').checked && !num(r.qty) && !num(r.borrow_in) && !num(r.borrow_out)) return false;
     var q=$('q').value.trim().toLowerCase();
     if(q && (String(r.part_no)+' '+String(r.name)).toLowerCase().indexOf(q)<0) return false;
     for(var k in FILT){ if(k===except) continue; if(!FILT[k].has(sval(r,k))) return false; }
@@ -120,6 +123,7 @@ tfoot td{position:sticky;bottom:0;background:var(--hd);font-weight:bold}
     for(var i=0;i<list.length;i++){var r=list[i];
       html+='<tr>'+COLS.map(function(c){var v=val(r,c.k);
         if(c.k==='updated_at') v=String(v).slice(0,16).replace('T',' ');
+        if(c.k==='part_no') return'<td title="'+esc(v)+'"><a class="pn" href="/part.html?part='+encodeURIComponent(v)+'">'+esc(v)+'</a></td>';
         return'<td class="'+(c.t==='n'?'n':'')+'" title="'+esc(v)+'">'+esc(c.t==='n'&&v!==''?fmt(num(v)):v)+'</td>'}).join('')+'</tr>';}
     $('bd').innerHTML=html||'<tr><td colspan="'+COLS.length+'" class="empty">'+(ROWS.length?'沒有符合篩選的資料':'尚無資料（按右上「從 Google Sheet 同步」）')+'</td></tr>';
     // 合計：跟畫面同一份 list，數字收尾一致
@@ -188,6 +192,7 @@ tfoot td{position:sticky;bottom:0;background:var(--hd);font-weight:bold}
   });
   document.addEventListener('mousedown',function(e){if(VM&&!VM.contains(e.target)&&!e.target.closest('[data-f]'))closeVM()});
   var tm;$('q').oninput=function(){clearTimeout(tm);tm=setTimeout(render,200)};
+  $('hz').onchange=render;
   $('clr').onclick=function(){FILT={};SORT={k:null,d:1};$('q').value='';header();render()};
   $('cw').onclick=function(){WID={};saveW(WID);colgroup()};
 

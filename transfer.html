@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>調撥單</title><link rel="stylesheet" href="/_lib/app.css"></head><body>
+<script src="/_lib/nav.js"></script>
+<h2>調撥單（委外加工發料／送修／重工／借出 → 調動倉別）</h2>
+<div class="card">
+  <div class="grid">
+    <label>調撥日期<input type="date" id="dd"></label>
+    <label>所屬專案（選填）<input id="pj" placeholder="例 115-3609"></label>
+    <label>預設撥出倉<select id="dfrom"></select></label>
+    <label>預設撥入倉<select id="dto"></select></label>
+    <label style="grid-column:span 2">備註<input id="note" placeholder="例 二階20260916003盛仕頎恆(OB18506002)"></label>
+  </div>
+  <table style="margin-top:10px"><thead><tr><th>料號</th><th>品名</th><th class="n">現有（撥出倉）</th><th class="n">數量</th><th>撥出倉</th><th>撥入倉</th><th>分錄備註</th><th></th></tr></thead><tbody id="bd"></tbody></table>
+  <p class="muted">料號以 * 開頭（例 *控卡*1、*治具*1）＝備註列，照記但不動庫存。</p>
+  <button id="add">＋ 加一列</button>
+  <p><button id="save" class="pri">建立調撥單並過帳</button> <span class="muted">任何一列撥出倉庫存不足 → 整張不過帳</span></p>
+  <div id="msg" class="msg"></div>
+</div>
+<script src="/_lib/auth.js"></script><script src="/_lib/common.js"></script>
+<script>
+function opts(sel){return U.WH.map(function(w){return'<option'+(w===sel?' selected':'')+'>'+w+'</option>'}).join('')}
+U.$('dfrom').innerHTML=opts('Z');U.$('dto').innerHTML=opts('O');
+var cache={};
+async function lookup(tr){
+  var p=tr.querySelector('[data-p]').value.trim().toUpperCase(),wh=tr.querySelector('[data-f]').value,nm=tr.querySelector('[data-nm]'),oh=tr.querySelector('[data-oh]');
+  if(!p||p[0]==='*'){nm.textContent='';oh.textContent='';return}
+  try{var d=cache[p]||(cache[p]=await U.api('/api/stock/list?q='+encodeURIComponent(p)+'&limit=50'));
+    var rows=d.rows.filter(function(r){return r.part_no===p});
+    nm.textContent=(rows[0]||{}).name||'（查無此料號）';
+    var s=rows.find(function(r){return r.wh_code===wh});oh.textContent=s?U.fmt(s.qty):'0';
+  }catch(e){nm.textContent=e.message}
+}
+function row(){
+  var tr=document.createElement('tr');
+  tr.innerHTML='<td><input data-p placeholder="料號" style="width:160px"></td><td data-nm class="muted"></td><td class="n" data-oh></td>'+
+    '<td class="n"><input class="q" data-q></td><td><select data-f>'+opts(U.$('dfrom').value)+'</select></td><td><select data-t>'+opts(U.$('dto').value)+'</select></td>'+
+    '<td><input data-n></td><td><button data-del>✕</button></td>';
+  U.$('bd').appendChild(tr);
+  tr.querySelector('[data-p]').onchange=function(){lookup(tr)};tr.querySelector('[data-f]').onchange=function(){lookup(tr)};
+  tr.querySelector('[data-p]').focus();
+}
+U.$('add').onclick=row;U.$('bd').onclick=function(e){if(e.target.dataset.del!=null)e.target.closest('tr').remove()};
+U.$('save').onclick=async function(){
+  var lines=[];U.$('bd').querySelectorAll('tr').forEach(function(tr){
+    var p=tr.querySelector('[data-p]').value.trim(),q=U.num(tr.querySelector('[data-q]').value);
+    if(p&&q>0)lines.push({part_no:p,qty:q,wh_code:tr.querySelector('[data-f]').value,to_wh:tr.querySelector('[data-t]').value,note:tr.querySelector('[data-n]').value.trim()})});
+  if(!lines.length){U.msg('至少要有一列（料號＋數量）','err');return}
+  if(!confirm('建立調撥單，共 '+lines.length+' 列，確定過帳？'))return;
+  this.disabled=true;
+  try{var r=await U.api('/api/docs/transfer',{doc_date:U.$('dd').value,project_no:U.$('pj').value.trim(),note:U.$('note').value.trim(),lines:lines});
+    U.msg('已建立調撥單 '+r.doc_no+'（已過帳）','good');U.$('bd').innerHTML='';cache={};row();
+  }catch(e){U.msg(e.message,'err')}finally{this.disabled=false}
+};
+U.$('dd').value=U.today();row();INVAuth.tryAutoLogin();
+</script></body></html>
