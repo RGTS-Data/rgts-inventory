@@ -237,12 +237,12 @@ a.kpi:hover{border-color:var(--ac)}
   function kpis(){
     var parts={},bo=0,boQty=0;
     ROWS.forEach(function(r){if(num(r.actual)!==0)parts[r.part_no]=1;if(num(r.borrow_out)>0){bo++;boQty+=num(r.borrow_out)}});
-    var S=SUMM, pend=S?S.pending_receipts:null, w=S?S.week:null;
+    var S=SUMM, pend=S&&S.pending_receipts!=null?S.pending_receipts:null, w=S&&S.week?S.week:null;
     $('kpis').innerHTML=
       card('料號數',fmt(Object.keys(parts).length),'有庫存的料號（共 '+fmt(ROWS.length)+' 列 料號×倉）')+
       card('借出中',fmt(bo)+' 列','借出合計 '+fmt(boQty))+
       card('待核對進貨單',pend==null?'—':fmt(pend),pend?'等阿國核對金額才入庫':'目前沒有待核對',pend?'/docs.html?status=pending':'',pend>0)+
-      card('近 7 天過帳',w?(w.receipt+' / '+w.issue+' / '+w.transfer):'—','進貨 / 領料 / 調撥'+(S?'（'+S.week_from.slice(5)+' 起）':''));
+      card('近 7 天過帳',w?(w.receipt+' / '+w.issue+' / '+w.transfer):'—','進貨 / 領料 / 調撥'+(S&&S.week_from?'（'+S.week_from.slice(5)+' 起）':''));
   }
   function recent(){
     var L=(SUMM&&SUMM.recent)||[];
