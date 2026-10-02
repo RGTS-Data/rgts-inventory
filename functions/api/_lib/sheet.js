@@ -6,7 +6,7 @@ import { getAccessToken } from './google-auth.js';
 export const DEFAULT_SHEET_ID = '1kAn9iVPWlX2qi0oaH_oEuh9QT44BaaVYXRAAKIZF2uc'; // 庫存表
 const SCOPE = 'https://www.googleapis.com/auth/spreadsheets.readonly';
 export const COLS = { part_no: '產品編號', name: '品名規格', unit: '單位', wh_code: '倉庫編號',
-  wh_name: '倉庫名稱', qty: '現有庫存', borrow_in: '借入數量', borrow_out: '借出數量' };
+  wh_name: '倉庫名稱', qty: '現有庫存', borrow_in: '借入數量', borrow_out: '借出數量', location: '儲位' };
 
 // 分頁挑選：名稱是純數字的取最大；都不是純數字就取第一個
 export function pickTab(titles) {

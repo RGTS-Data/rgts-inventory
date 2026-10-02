@@ -36,11 +36,12 @@ tfoot td{position:sticky;bottom:0;background:var(--hd);font-weight:bold}
 .vm .ft{display:flex;justify-content:flex-end;gap:6px;margin-top:6px}
 .empty{padding:20px;color:#888}
 a.pn{color:#2563eb;text-decoration:none}a.pn:hover{text-decoration:underline}
+td.loc{cursor:pointer}td.loc:hover{background:#eef4ff}
 </style></head><body>
 <script src="/_lib/nav.js"></script>
 <h2>庫存總表</h2>
 <div class="bar">
-  <input id="q" type="search" placeholder="搜尋料號 / 品名">
+  <input id="q" type="search" placeholder="搜尋料號 / 品名 / 儲位">
   <label><input type="checkbox" id="hz" checked> 隱藏 0 庫存</label>
   <button id="clr">✕ 清除所有篩選</button>
   <button id="xls">📊 匯出 Excel</button>
@@ -61,6 +62,7 @@ a.pn{color:#2563eb;text-decoration:none}a.pn:hover{text-decoration:underline}
     {k:'name',l:'品名規格',w:380,t:'s'},
     {k:'wh_code',l:'倉庫編號',w:80,t:'s'},
     {k:'wh_name',l:'倉庫名稱',w:100,t:'s'},
+    {k:'location',l:'儲位',w:80,t:'s'},
     {k:'unit',l:'單位',w:55,t:'s'},
     {k:'qty',l:'現有庫存',w:85,t:'n',sum:1},
     {k:'borrow_in',l:'借入',w:65,t:'n',sum:1},
@@ -101,7 +103,7 @@ a.pn{color:#2563eb;text-decoration:none}a.pn:hover{text-decoration:underline}
   function pass(r,except){
     if($('hz').checked && !num(r.qty) && !num(r.borrow_in) && !num(r.borrow_out)) return false;
     var q=$('q').value.trim().toLowerCase();
-    if(q && (String(r.part_no)+' '+String(r.name)).toLowerCase().indexOf(q)<0) return false;
+    if(q && (String(r.part_no)+' '+String(r.name)+' '+String(r.location||'')).toLowerCase().indexOf(q)<0) return false;
     for(var k in FILT){ if(k===except) continue; if(!FILT[k].has(sval(r,k))) return false; }
     return true;
   }
@@ -123,6 +125,7 @@ a.pn{color:#2563eb;text-decoration:none}a.pn:hover{text-decoration:underline}
     for(var i=0;i<list.length;i++){var r=list[i];
       html+='<tr>'+COLS.map(function(c){var v=val(r,c.k);
         if(c.k==='updated_at') v=String(v).slice(0,16).replace('T',' ');
+        if(c.k==='location') return'<td class="loc" data-loc="'+esc(r.part_no)+'|'+esc(r.wh_code)+'" title="點一下修改儲位">'+(v?esc(v):'<span style="color:#bbb">＋</span>')+'</td>';
         if(c.k==='part_no') return'<td title="'+esc(v)+'"><a class="pn" href="/part.html?part='+encodeURIComponent(v)+'">'+esc(v)+'</a></td>';
         return'<td class="'+(c.t==='n'?'n':'')+'" title="'+esc(v)+'">'+esc(c.t==='n'&&v!==''?fmt(num(v)):v)+'</td>'}).join('')+'</tr>';}
     $('bd').innerHTML=html||'<tr><td colspan="'+COLS.length+'" class="empty">'+(ROWS.length?'沒有符合篩選的資料':'尚無資料（按右上「從 Google Sheet 同步」）')+'</td></tr>';
@@ -193,6 +196,15 @@ a.pn{color:#2563eb;text-decoration:none}a.pn:hover{text-decoration:underline}
   document.addEventListener('mousedown',function(e){if(VM&&!VM.contains(e.target)&&!e.target.closest('[data-f]'))closeVM()});
   var tm;$('q').oninput=function(){clearTimeout(tm);tm=setTimeout(render,200)};
   $('hz').onchange=render;
+  // 點儲位格 → 修改（料號×倉庫一個儲位）
+  $('bd').addEventListener('click',async function(e){
+    var td=e.target.closest('[data-loc]');if(!td)return;
+    var k=td.dataset.loc.split('|'),r=ROWS.find(function(x){return x.part_no===k[0]&&x.wh_code===k[1]});if(!r)return;
+    var v=prompt(r.part_no+' @'+r.wh_code+' 的儲位（例 B4-03；留空＝清除）：',r.location||'');if(v===null)return;
+    try{var res=await INVAuth.authedFetch('/api/stock/location',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({part_no:r.part_no,wh_code:r.wh_code,location:v})});
+      var d=await res.json();if(!d.ok)throw new Error(d.error||res.status);r.location=d.location||'';render();
+    }catch(err){alert('儲位存檔失敗：'+err.message)}
+  });
   $('clr').onclick=function(){FILT={};SORT={k:null,d:1};$('q').value='';header();render()};
   $('cw').onclick=function(){WID={};saveW(WID);colgroup()};
 
@@ -203,7 +215,7 @@ a.pn{color:#2563eb;text-decoration:none}a.pn:hover{text-decoration:underline}
     var d=new Date(),ts=d.getFullYear()+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0');
     INVXlsx.download('庫存總表_'+ts+'.xlsx',{sheet:'庫存總表',rows:rows,
       widths:COLS.map(function(c){return Math.round((WID[c.k]||c.w)/7)}),
-      textCols:[0,2,3]});   // 料號／倉庫別被 Excel 轉成數字（會掉前導 0）
+      textCols:[0,2,3,4]});   // 料號／倉庫別被 Excel 轉成數字（會掉前導 0）
   };
 
   // ── 載入

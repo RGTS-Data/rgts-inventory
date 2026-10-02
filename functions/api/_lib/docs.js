@@ -3,6 +3,7 @@
 import { nowIso } from './util.js';
 
 export const DOC_PREFIX = { receipt: 'RC', issue: 'IS', transfer: 'TR' };
+export const REVERSE_PREFIX = 'RV';   // 反向單（沖銷）一律 RV 開頭，doc_type 沿用原單
 export const DOC_LABEL = { receipt: '進貨單', issue: '領料單', transfer: '調撥單' };
 export const ONLINE_TYPES = ['receipt', 'issue', 'transfer_out', 'transfer_in'];
 
@@ -14,8 +15,8 @@ export function docDate(s) {
 }
 
 // 下一個單號：前綴＋YYYYMMDD＋3 碼流水（取 MAX，不靠「最新一列」）
-export async function nextDocNo(env, type, date) {
-  const base = DOC_PREFIX[type] + date.replace(/-/g, '');
+export async function nextDocNo(env, type, date, prefix = null) {
+  const base = (prefix || DOC_PREFIX[type]) + date.replace(/-/g, '');
   const r = await env.DB.prepare(
     `SELECT MAX(CAST(substr(doc_no, ?) AS INTEGER)) AS m FROM inv_docs WHERE doc_no LIKE ?`
   ).bind(base.length + 1, base + '%').first();
@@ -61,14 +62,12 @@ export function postStmts(env, { type, docNo, project, invoiceNo, email, lines }
       S.push(ensure(l.part_no, l.to_wh, l.name), add(l.part_no, l.to_wh, l.qty), move('transfer_in', l, l.to_wh, l.qty));
     }
   }
-  if (type !== 'receipt') {
-    // 守門：本單碰到的出庫列只要有負數 → 插 NULL 觸發 NOT NULL → 整批回滾
-    S.push(env.DB.prepare(
-      `INSERT INTO inv_guard (ok) SELECT NULL WHERE EXISTS (
-         SELECT 1 FROM inv_doc_lines l JOIN inv_stock s ON s.part_no = l.part_no AND s.wh_code = l.wh_code
-         WHERE l.doc_id = ${DOC} AND s.qty < -0.000001)`
-    ).bind(docNo));
-  }
+  // 守門（所有單別都做；反向單會讓「進貨」也變成扣庫存）：本單碰到的倉（出／入都算）只要有負數 → 插 NULL → 整批回滾
+  S.push(env.DB.prepare(
+    `INSERT INTO inv_guard (ok) SELECT NULL WHERE EXISTS (
+       SELECT 1 FROM inv_doc_lines l JOIN inv_stock s ON s.part_no = l.part_no AND s.wh_code IN (l.wh_code, l.to_wh)
+       WHERE l.doc_id = ${DOC} AND s.qty < -0.000001)`
+  ).bind(docNo));
   S.push(env.DB.prepare(`UPDATE inv_docs SET status='posted', posted_by=?, posted_at=? WHERE doc_no = ?`).bind(email, ts, docNo));
   return S;
 }
@@ -76,10 +75,10 @@ export function postStmts(env, { type, docNo, project, invoiceNo, email, lines }
 // 建單語句：表頭＋明細
 export function createStmts(env, h, lines) {
   const S = [env.DB.prepare(
-    `INSERT INTO inv_docs (doc_no, doc_type, doc_date, status, vendor, invoice_no, invoice_amount, project_no, note, created_by, created_at)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?)`
+    `INSERT INTO inv_docs (doc_no, doc_type, doc_date, status, vendor, invoice_no, invoice_amount, project_no, note, created_by, created_at, reverses)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
   ).bind(h.doc_no, h.doc_type, h.doc_date, h.status, h.vendor ?? null, h.invoice_no ?? null, h.invoice_amount ?? null,
-    h.project_no ?? null, h.note ?? null, h.email, nowIso())];
+    h.project_no ?? null, h.note ?? null, h.email, nowIso(), h.reverses ?? null)];
   lines.forEach((l, i) => S.push(env.DB.prepare(
     `INSERT INTO inv_doc_lines (doc_id, seq, part_no, name, qty, wh_code, to_wh, po_line_id, po_no, unit_price, amount, note)
      VALUES ((SELECT id FROM inv_docs WHERE doc_no = ?),?,?,?,?,?,?,?,?,?,?,?)`
@@ -89,11 +88,12 @@ export function createStmts(env, h, lines) {
 }
 
 // 取號＋寫入，撞到 UNIQUE（兩人同時開單）就重取號重試
-export async function createDoc(env, type, h, lines, { post = false, email, project, invoiceNo } = {}) {
+export async function createDoc(env, type, h, lines, { post = false, email, project, invoiceNo, prefix = null, extra = [] } = {}) {
   for (let i = 0; i < 4; i++) {
-    const docNo = await nextDocNo(env, type, h.doc_date);
+    const docNo = await nextDocNo(env, type, h.doc_date, prefix);
     const stmts = createStmts(env, { ...h, doc_no: docNo, doc_type: type, email }, lines);
     if (post) stmts.push(...postStmts(env, { type, docNo, project, invoiceNo, email, lines }));
+    for (const f of extra) stmts.push(f(docNo));   // 附加語句（例：反向單回寫原單 reversed_by）
     try {
       await env.DB.batch(stmts);
       return { docNo };

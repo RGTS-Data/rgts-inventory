@@ -28,7 +28,7 @@ async function lookup(tr){
   try{var d=cache[p]||(cache[p]=await U.api('/api/stock/list?q='+encodeURIComponent(p)+'&limit=50'));
     var rows=d.rows.filter(function(r){return r.part_no===p});
     nm.textContent=(rows[0]||{}).name||'（查無此料號）';
-    var s=rows.find(function(r){return r.wh_code===wh});oh.textContent=s?U.fmt(s.qty):'0';
+    var s=rows.find(function(r){return r.wh_code===wh});oh.textContent=s?U.fmt(s.qty)+(s.location?'（'+s.location+'）':''):'0';
   }catch(e){nm.textContent=e.message}
 }
 function row(){

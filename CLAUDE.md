@@ -224,8 +224,10 @@ Chris 說出 **「開始會議」「會議開始」「會議中」「現在會�
 RGTS 庫存系統：進料／領料／扣帳，連動 bom-tool 採購總表。Cloudflare Pages + Functions + D1（共用 `rgts-pi-db`）。
 
 ## 架構
-- 只**唯讀** `purchase_orders` / `purchase_lines` / `projects` / `bom_*`；只寫自己的 `inv_*` 表（`migrations/0001`、`0002`）。
+- 只**唯讀** `purchase_orders` / `purchase_lines` / `projects` / `bom_*`；只寫自己的 `inv_*` 表（`migrations/0001`～`0003`）。
 - 單據照 Willy 的正航日常作業（2026-10-02）：**進貨單**（從採購單帶入、發票在表頭；存成「待核對」→ 阿國核對金額一致才過帳入庫）、**領料單**（依專案 BOM，建單即扣帳）、**調撥單**（倉別互調，建單即過帳）。
 - 頁面：`/` 庫存總表、`/part.html` 料號查詢、`/receipt.html` 進貨單、`/issue.html` 領料單、`/transfer.html` 調撥單、`/docs.html` 單據查詢／核對、`/moves.html` 流水帳、`/import.html` Excel 匯入。
-- `functions/api/`：`stock/{list,sheet-check}`、`import/{stock,finish}`、`admin/{sync-sheet,last-sync}`、`receipt/lines`、`docs/{receipt,check,issue,transfer,void,list,get}`、`issue/project`、`part/detail`、`moves/list`。
+- **儲位**＝料號×倉庫一格（`inv_stock.location`），總表點格子、料號查詢頁可改；Excel 匯入有「儲位／細項描述」欄才寫，沒有就保留。
+- **已過帳不作廢，開反向單**（`docs/reverse`，單號 RV 開頭、整張數量取負、一張只能沖一次；進貨單的沖銷限阿國）。
+- `functions/api/`：`stock/{list,sheet-check,location}`、`import/{stock,finish}`、`admin/{sync-sheet,last-sync}`、`receipt/lines`、`docs/{receipt,check,issue,transfer,void,reverse,list,get}`、`issue/project`、`part/detail`、`moves/list`。
 - 認證模型同 rgts-pmc（CF Access JWT 或 `X-Admin-Token`）。
