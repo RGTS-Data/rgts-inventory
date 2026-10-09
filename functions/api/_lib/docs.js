@@ -7,6 +7,17 @@ export const REVERSE_PREFIX = 'RV';   // 反向單（沖銷）一律 RV 開頭�
 export const DOC_LABEL = { receipt: '進貨單', issue: '領料單', transfer: '調撥單' };
 export const ONLINE_TYPES = ['receipt', 'issue', 'transfer_out', 'transfer_in'];
 
+// 委外調撥的治具聲明：撥入這些倉 → 過帳前一定要選治具怎麼處理（前端 common.js 的 U.JIG_WH 要同步）
+export const JIG_WH = ['O', 'R'];   // O＝(-)委外倉、R＝廠商重工倉（Chris 2026-10-11：R 也要擋）
+export const JIG_OPTS = { sent: '治具已隨附', vendor: '廠商自備', none: '不需治具' };
+// 回傳錯誤訊息；null＝通過。sent 要寫治具名稱／數量、none 要寫原因（只點選項太容易隨手亂點）。
+export function jigCheck(jig, note) {
+  if (!JIG_OPTS[jig]) return '撥給廠商（委外倉／廠商重工倉）：請選治具「已隨附／廠商自備／不需」';
+  if (jig === 'sent' && !note) return '治具已隨附：請寫治具名稱與數量';
+  if (jig === 'none' && !note) return '不需治具：請寫原因';
+  return null;
+}
+
 // 日期一律 YYYY-MM-DD；空的用台灣今天
 export function docDate(s) {
   const v = String(s || '').trim().replace(/\//g, '-');
@@ -77,11 +88,11 @@ export function postStmts(env, { type, docNo, project, invoiceNo, email, lines }
 export function createStmts(env, h, lines) {
   const S = [env.DB.prepare(
     `INSERT INTO inv_docs (doc_no, doc_type, doc_date, status, vendor, invoice_no, invoice_amount, project_no, note, created_by, created_at, reverses,
-                           invoice_date, currency, fx_rate)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+                           invoice_date, currency, fx_rate, jig, jig_note)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   ).bind(h.doc_no, h.doc_type, h.doc_date, h.status, h.vendor ?? null, h.invoice_no ?? null, h.invoice_amount ?? null,
     h.project_no ?? null, h.note ?? null, h.email, nowIso(), h.reverses ?? null,
-    h.invoice_date ?? null, h.currency ?? null, h.fx_rate ?? null)];
+    h.invoice_date ?? null, h.currency ?? null, h.fx_rate ?? null, h.jig ?? null, h.jig_note ?? null)];
   lines.forEach((l, i) => S.push(env.DB.prepare(
     `INSERT INTO inv_doc_lines (doc_id, seq, part_no, name, qty, wh_code, to_wh, po_line_id, po_no, unit_price, amount, note, kind)
      VALUES ((SELECT id FROM inv_docs WHERE doc_no = ?),?,?,?,?,?,?,?,?,?,?,?,?)`

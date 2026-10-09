@@ -18,6 +18,9 @@
     var list = U.WH.concat(extra || []).filter(function (v, i, a) { return v && a.indexOf(v) === i; });
     return '<select ' + attr + '>' + list.map(function (w) { return '<option' + (w === sel ? ' selected' : '') + '>' + U.esc(w) + '</option>'; }).join('') + '</select>';
   };
+  // 委外調撥的治具聲明（後端 functions/api/_lib/docs.js 的 JIG_WH／JIG_OPTS 要同步）
+  U.JIG_WH = ['O', 'R'];   // O＝(-)委外倉、R＝廠商重工倉
+  U.JIG = { sent: '治具已隨附', vendor: '廠商自備', none: '不需治具' };
   U.TYPE = { receipt: '進貨單', issue: '領料單', transfer: '調撥單' };
   U.STATUS = { pending: '<span class="tag wait">待確認收貨</span>', posted: '<span class="tag ok">已過帳</span>', rejected: '<span class="tag bad">退回</span>', void: '<span class="tag muted">作廢</span>' };
   U.MOVE = { receipt: '進料', issue: '領料', transfer_out: '調出', transfer_in: '調入', import_adjust: '匯入覆蓋' };

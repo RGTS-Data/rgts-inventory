@@ -14,6 +14,15 @@
   <table style="margin-top:10px"><thead><tr><th>料號</th><th>品名</th><th class="n">現有（撥出倉）</th><th class="n">數量</th><th>撥出倉</th><th>撥入倉</th><th>分錄備註</th><th></th></tr></thead><tbody id="bd"></tbody></table>
   <p class="muted">料號以 * 開頭（例 *控卡*1、*治具*1）＝備註列，照記但不動庫存。</p>
   <button id="add">＋ 加一列</button>
+  <div id="jigbox" class="warn" style="margin-top:10px;display:none">
+    <b>🔧 撥給廠商（委外倉 O／廠商重工倉 R）：治具怎麼處理？</b>　<span>必選，選完才能過帳</span>
+    <div style="display:flex;gap:18px;flex-wrap:wrap;margin:6px 0">
+      <label><input type="radio" name="jig" value="sent"> 治具已隨附</label>
+      <label><input type="radio" name="jig" value="vendor"> 廠商自備</label>
+      <label><input type="radio" name="jig" value="none"> 不需治具</label>
+    </div>
+    <input id="jignote" style="width:100%;max-width:520px" placeholder="先選上面一項">
+  </div>
   <p><button id="save" class="pri">建立調撥單並過帳</button> <span class="muted">任何一列撥出倉庫存不足 → 整張不過帳</span></p>
   <div id="msg" class="msg"></div>
 </div>
@@ -40,17 +49,33 @@ function row(){
   tr.querySelector('[data-p]').onchange=function(){lookup(tr)};tr.querySelector('[data-f]').onchange=function(){lookup(tr)};
   tr.querySelector('[data-p]').focus();
 }
-U.$('add').onclick=row;U.$('bd').onclick=function(e){if(e.target.dataset.del!=null)e.target.closest('tr').remove()};
+U.$('add').onclick=row;U.$('bd').onclick=function(e){if(e.target.dataset.del!=null){e.target.closest('tr').remove();refreshJig()}};
+// 委外治具：有任何一列撥入 U.JIG_WH（委外倉／廠商重工倉）就出現；sent 要寫治具名稱／數量、none 要寫原因（後端 jigCheck 同規則）
+var JIG_PH={sent:'治具名稱與數量（必填），例 面框貼合治具×1',vendor:'備註（選填），例 廠商已有上批留下的治具',none:'為什麼不需要治具（必填）'};
+function jigNeeded(){return Array.prototype.some.call(U.$('bd').querySelectorAll('tr'),function(tr){
+  var p=tr.querySelector('[data-p]').value.trim();return p[0]!=='*'&&U.JIG_WH.indexOf(tr.querySelector('[data-t]').value)>=0})}
+function jigVal(){var r=document.querySelector('input[name=jig]:checked');return r?r.value:''}
+function refreshJig(){U.$('jigbox').style.display=jigNeeded()?'':'none';var v=jigVal();U.$('jignote').placeholder=v?JIG_PH[v]:'先選上面一項'}
+function jigErr(){var v=jigVal(),n=U.$('jignote').value.trim();
+  if(!v)return'撥給廠商（委外倉／廠商重工倉）：請選治具「已隨附／廠商自備／不需」';
+  if(v==='sent'&&!n)return'治具已隨附：請寫治具名稱與數量';
+  if(v==='none'&&!n)return'不需治具：請寫原因';return''}
+U.$('bd').addEventListener('change',refreshJig);U.$('dto').addEventListener('change',refreshJig);
+document.querySelectorAll('input[name=jig]').forEach(function(r){r.onchange=refreshJig});
 U.$('save').onclick=async function(){
   var lines=[];U.$('bd').querySelectorAll('tr').forEach(function(tr){
     var p=tr.querySelector('[data-p]').value.trim(),q=U.num(tr.querySelector('[data-q]').value);
     if(p&&q>0)lines.push({part_no:p,qty:q,wh_code:tr.querySelector('[data-f]').value,to_wh:tr.querySelector('[data-t]').value,note:tr.querySelector('[data-n]').value.trim()})});
   if(!lines.length){U.msg('至少要有一列（料號＋數量）','err');return}
-  if(!confirm('建立調撥單，共 '+lines.length+' 列，確定過帳？'))return;
+  var toJig=lines.some(function(l){return l.part_no[0]!=='*'&&U.JIG_WH.indexOf(l.to_wh)>=0}),jig='',jn='';
+  if(toJig){var je=jigErr();if(je){U.msg(je,'err');U.$('jigbox').scrollIntoView({behavior:'smooth',block:'center'});return}
+    jig=jigVal();jn=U.$('jignote').value.trim()}
+  if(!confirm('建立調撥單，共 '+lines.length+' 列'+(toJig?'\n治具：'+U.JIG[jig]+(jn?'（'+jn+'）':''):'')+'\n確定過帳？'))return;
   this.disabled=true;
-  try{var r=await U.api('/api/docs/transfer',{doc_date:U.$('dd').value,project_no:U.$('pj').value.trim(),note:U.$('note').value.trim(),lines:lines});
-    U.msg('已建立調撥單 '+r.doc_no+'（已過帳）','good');U.$('bd').innerHTML='';cache={};row();
-  }catch(e){U.msg(e.message,'err')}finally{this.disabled=false}
+  try{var r=await U.api('/api/docs/transfer',{doc_date:U.$('dd').value,project_no:U.$('pj').value.trim(),note:U.$('note').value.trim(),jig:jig,jig_note:jn,lines:lines});
+    U.msg('已建立調撥單 '+r.doc_no+'（已過帳）','good');U.$('bd').innerHTML='';cache={};
+    document.querySelectorAll('input[name=jig]').forEach(function(x){x.checked=false});U.$('jignote').value='';row();refreshJig();
+  }catch(e){U.msg(e.message,'err');if(e.code==='jig_required')U.$('jigbox').scrollIntoView({behavior:'smooth',block:'center'})}finally{this.disabled=false}
 };
-U.$('dd').value=U.today();row();INVAuth.tryAutoLogin();
+U.$('dd').value=U.today();row();refreshJig();INVAuth.tryAutoLogin();
 </script></body></html>
