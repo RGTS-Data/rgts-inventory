@@ -1,4 +1,4 @@
-// GET /api/docs/list?type=&status=&q=&from=&to=  單據清單（q 比對單號／廠商／發票／專案／明細料號）
+// GET /api/docs/list?type=&status=&inv=todo&q=&from=&to=  單據清單（q 比對單號／廠商／發票／專案／明細料號）
 import { requireAuth } from '../_lib/auth.js';
 import { ok, err } from '../_lib/json.js';
 import { gateEmails } from '../_lib/util.js';
@@ -14,6 +14,8 @@ export async function onRequestGet({ request, env }) {
   if (p('status')) { w.push('d.status = ?'); b.push(p('status')); }
   if (p('from')) { w.push('d.doc_date >= ?'); b.push(p('from')); }
   if (p('to')) { w.push('d.doc_date <= ?'); b.push(p('to')); }
+  // inv=todo：進貨單還沒完成發票核對（含還沒補發票的）；不含反向單、作廢、退回
+  if (p('inv') === 'todo') w.push(`d.doc_type = 'receipt' AND d.reverses IS NULL AND d.status IN ('pending','posted') AND d.inv_checked_at IS NULL`);
   if (p('q')) {
     const q = `%${p('q')}%`;
     w.push(`(d.doc_no LIKE ? OR d.vendor LIKE ? OR d.invoice_no LIKE ? OR d.project_no LIKE ?

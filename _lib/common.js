@@ -19,7 +19,7 @@
     return '<select ' + attr + '>' + list.map(function (w) { return '<option' + (w === sel ? ' selected' : '') + '>' + U.esc(w) + '</option>'; }).join('') + '</select>';
   };
   U.TYPE = { receipt: '進貨單', issue: '領料單', transfer: '調撥單' };
-  U.STATUS = { pending: '<span class="tag wait">待核對</span>', posted: '<span class="tag ok">已過帳</span>', rejected: '<span class="tag bad">退回</span>', void: '<span class="tag muted">作廢</span>' };
+  U.STATUS = { pending: '<span class="tag wait">待確認收貨</span>', posted: '<span class="tag ok">已過帳</span>', rejected: '<span class="tag bad">退回</span>', void: '<span class="tag muted">作廢</span>' };
   U.MOVE = { receipt: '進料', issue: '領料', transfer_out: '調出', transfer_in: '調入', import_adjust: '匯入覆蓋' };
   window.U = U;
 })();

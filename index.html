@@ -246,7 +246,7 @@ a.kpi:hover{border-color:var(--ac)}
   // ── 載入
   // ── 數字卡（庫存部分從 ROWS 算；單據部分來自 /api/stock/summary）
   var SUMM=null, TYPE={receipt:'進貨',issue:'領料',transfer:'調撥'},
-      ST={pending:'<span class="tag wait">待核對</span>',posted:'<span class="tag ok">已過帳</span>',rejected:'<span class="tag bad">退回</span>',void:'<span class="tag muted">作廢</span>'};
+      ST={pending:'<span class="tag wait">待確認收貨</span>',posted:'<span class="tag ok">已過帳</span>',rejected:'<span class="tag bad">退回</span>',void:'<span class="tag muted">作廢</span>'};
   function card(k,v,sub,href,warn){var t=href?'a':'div';
     return'<'+t+' class="kpi'+(warn?' warn':'')+'"'+(href?' href="'+href+'"':'')+'><div class="k">'+k+'</div><div class="v">'+v+'</div><div class="s">'+sub+'</div></'+t+'>'}
   function kpis(){
@@ -256,7 +256,7 @@ a.kpi:hover{border-color:var(--ac)}
     $('kpis').innerHTML=
       card('料號數',fmt(Object.keys(parts).length),'共 '+fmt(ROWS.length)+' 列（料號×倉）')+
       card('借出中',fmt(bo)+' 列','借出合計 '+fmt(boQty))+
-      card('待核對進貨單',pend==null?'—':fmt(pend),pend?'等阿國核對金額才入庫':'目前沒有待核對',pend?'/docs.html?status=pending':'',pend>0)+
+      card('待確認收貨',pend==null?'—':fmt(pend),(pend?'等阿國確認入庫':'目前沒有')+(S&&S.invoice_todo?'・發票待核對 '+S.invoice_todo:''),pend?'/docs.html?status=pending':(S&&S.invoice_todo?'/docs.html?inv=todo':''),pend>0)+
       card('近 7 天過帳',w?(w.receipt+' / '+w.issue+' / '+w.transfer):'—','進貨 / 領料 / 調撥'+(S&&S.week_from?'（'+S.week_from.slice(5)+' 起）':''));
   }
   function recent(){

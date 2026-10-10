@@ -20,3 +20,16 @@ export function gateEmails(env) {
   return String(env.GATE_EMAILS || 'gary_chen@nord-titan.com')
     .split(',').map((s) => s.trim().toLowerCase()).filter(Boolean);
 }
+
+// 幣別：空白／TWD／NT → NTD；其他大寫（採購總表實際只有 NTD/USD/RMB）
+export function normCur(c) {
+  const v = String(c || '').trim().toUpperCase();
+  return !v || v === 'TWD' || v === 'NT' || v === 'NT$' ? 'NTD' : v;
+}
+// 金額／匯率欄：空白＝null；有填就要是數字（千分位逗號可）
+export function optNum(v) {
+  const t = String(v ?? '').replace(/,/g, '').trim();
+  if (t === '') return null;
+  const n = Number(t);
+  return Number.isFinite(n) ? n : NaN;
+}
