@@ -9,7 +9,7 @@ export async function onRequestGet({ request, env }) {
   if (!env.DB) return err('DB binding missing', 500);
   // 近 7 天以台灣日期算（doc_date 存的是台灣日期 YYYY-MM-DD）
   const tw = new Date(Date.now() + 8 * 3600e3 - 6 * 86400e3).toISOString().slice(0, 10);
-  const [pend, week, recent] = await env.DB.batch([
+  const [pend, week, recent, invTodo] = await env.DB.batch([
     env.DB.prepare(`SELECT COUNT(*) AS n FROM inv_docs WHERE doc_type = 'receipt' AND status = 'pending'`),
     env.DB.prepare(`SELECT doc_type, COUNT(*) AS n FROM inv_docs WHERE status = 'posted' AND doc_date >= ? GROUP BY doc_type`).bind(tw),
     env.DB.prepare(
@@ -17,11 +17,13 @@ export async function onRequestGet({ request, env }) {
               (SELECT COUNT(*) FROM inv_doc_lines l WHERE l.doc_id = d.id) AS line_count,
               (SELECT SUM(qty) FROM inv_doc_lines l WHERE l.doc_id = d.id) AS qty_total
        FROM inv_docs d ORDER BY d.id DESC LIMIT 12`),
+    env.DB.prepare(`SELECT COUNT(*) AS n FROM inv_docs WHERE doc_type = 'receipt' AND reverses IS NULL AND status IN ('pending','posted') AND inv_checked_at IS NULL`),
   ]);
   const w = {};
   for (const r of week.results || []) w[r.doc_type] = r.n;
   return ok({
     pending_receipts: pend.results?.[0]?.n || 0,
+    invoice_todo: invTodo.results?.[0]?.n || 0,   // 發票還沒核對完成（含還沒補發票）
     week_from: tw,
     week: { receipt: w.receipt || 0, issue: w.issue || 0, transfer: w.transfer || 0 },
     recent: recent.results || [],

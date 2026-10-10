@@ -34,6 +34,7 @@ export async function onRequestPost({ request, env }) {
       doc_date: docDate(b.doc_date), status: 'draft', vendor: d.vendor, invoice_no: d.invoice_no,
       invoice_amount: d.invoice_amount == null ? null : -Number(d.invoice_amount), project_no: d.project_no,
       note: `沖銷 ${d.doc_no}：${reason}`, reverses: d.doc_no,
+      invoice_date: d.invoice_date, currency: d.currency, fx_rate: d.fx_rate,
     }, lines, {
       post: true, email: user.email, project: d.project_no, invoiceNo: d.invoice_no, prefix: REVERSE_PREFIX,
       extra: [(no) => env.DB.prepare(`UPDATE inv_docs SET reversed_by = ? WHERE id = ? AND reversed_by IS NULL`).bind(no, d.id)],

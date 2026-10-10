@@ -6,7 +6,9 @@ export async function receivedMap(env, ids) {
   for (const c of chunk([...new Set(ids)].filter(Boolean))) {
     const ph = c.map(() => '?').join(',');
     for (const x of (await env.DB.prepare(
-      `SELECT po_line_id, SUM(qty_delta) s FROM inv_moves WHERE type='receipt' AND po_line_id IN (${ph}) GROUP BY po_line_id`
+      // 已過帳進貨單（含反向單的負數列）的明細加總。不看 inv_moves：運費列不動庫存、沒有流水帳。
+      `SELECT l.po_line_id, SUM(l.qty) s FROM inv_doc_lines l JOIN inv_docs d ON d.id = l.doc_id
+       WHERE d.doc_type='receipt' AND d.status='posted' AND l.po_line_id IN (${ph}) GROUP BY l.po_line_id`
     ).bind(...c).all()).results || []) get(x.po_line_id).posted = Number(x.s) || 0;
     for (const x of (await env.DB.prepare(
       `SELECT l.po_line_id, SUM(l.qty) s FROM inv_doc_lines l JOIN inv_docs d ON d.id = l.doc_id

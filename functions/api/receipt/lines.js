@@ -1,4 +1,5 @@
 // GET /api/receipt/lines?q=&all=1  進料用：查採購明細（採購單號/料號/廠商/專案），附「已入庫量」與「發票核對狀態」
+// 運費這種沒料號的列也列（is_fee），只算金額不入庫。
 // 附「已入（已過帳）」與「待核對（進貨單未過帳）」；預設只列還沒入滿的；all=1 連已入滿的一起列。唯讀 purchase_*。
 import { requireAuth } from '../_lib/auth.js';
 import { ok, err } from '../_lib/json.js';
@@ -19,14 +20,14 @@ export async function onRequestGet({ request, env }) {
             l.amount, l.currency, l.invoice_no, l.arrival_date, l.project_no
      FROM purchase_lines l JOIN purchase_orders o ON o.id = l.po_id
      WHERE (o.po_no LIKE ? OR l.part_no LIKE ? OR o.vendor LIKE ? OR l.project_no LIKE ?)
-       AND COALESCE(l.part_no,'') <> ''
      ORDER BY o.order_date DESC, l.id DESC LIMIT 300`
   ).bind(like, like, like, like).all();
   const lines = r.results || [];
   const recv = await receivedMap(env, lines.map((x) => x.id));
   const rows = lines.map((x) => {
     const r = recv.get(x.id) || { posted: 0, pending: 0 };
-    return { ...x, received: r.posted, pending: r.pending };
+    // 沒料號的列（運費等）也列出：可勾進進貨單算金額，但過帳不動庫存（Chris 2026-10-10）
+    return { ...x, received: r.posted, pending: r.pending, is_fee: !String(x.part_no || '').trim() };
   }).filter((x) => all || x.received + x.pending < (Number(x.qty) || 0));
   const canGate = user.via === 'cf-access' && gateEmails(env).includes(String(user.email).toLowerCase());
   return ok({ rows, can_gate: canGate, truncated: lines.length >= 300 });

@@ -31,6 +31,7 @@ export async function onlineStarted(env) {
   return { n: Number(r?.n) || 0, first_ts: r?.first_ts || null };
 }
 
+// 不動庫存的列：沒有料號（例：採購單的運費列）或 * 開頭的備註列
 const isMemo = (l) => !l.part_no || String(l.part_no).startsWith('*');
 
 // 過帳語句（不執行）。docRef＝取得 doc id 的 SQL 片段與參數（建單同批時用 doc_no 子查詢）
@@ -75,10 +76,12 @@ export function postStmts(env, { type, docNo, project, invoiceNo, email, lines }
 // 建單語句：表頭＋明細
 export function createStmts(env, h, lines) {
   const S = [env.DB.prepare(
-    `INSERT INTO inv_docs (doc_no, doc_type, doc_date, status, vendor, invoice_no, invoice_amount, project_no, note, created_by, created_at, reverses)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
+    `INSERT INTO inv_docs (doc_no, doc_type, doc_date, status, vendor, invoice_no, invoice_amount, project_no, note, created_by, created_at, reverses,
+                           invoice_date, currency, fx_rate)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   ).bind(h.doc_no, h.doc_type, h.doc_date, h.status, h.vendor ?? null, h.invoice_no ?? null, h.invoice_amount ?? null,
-    h.project_no ?? null, h.note ?? null, h.email, nowIso(), h.reverses ?? null)];
+    h.project_no ?? null, h.note ?? null, h.email, nowIso(), h.reverses ?? null,
+    h.invoice_date ?? null, h.currency ?? null, h.fx_rate ?? null)];
   lines.forEach((l, i) => S.push(env.DB.prepare(
     `INSERT INTO inv_doc_lines (doc_id, seq, part_no, name, qty, wh_code, to_wh, po_line_id, po_no, unit_price, amount, note)
      VALUES ((SELECT id FROM inv_docs WHERE doc_no = ?),?,?,?,?,?,?,?,?,?,?,?)`
