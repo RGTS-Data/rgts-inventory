@@ -27,7 +27,7 @@ export async function onRequestPost({ request, env }) {
   const lines = src.map((l) => ({
     part_no: l.part_no, name: l.name, qty: -Number(l.qty), wh_code: l.wh_code, to_wh: l.to_wh,
     po_line_id: l.po_line_id, po_no: l.po_no, unit_price: l.unit_price,
-    amount: l.amount == null ? null : -Number(l.amount), note: l.note,
+    amount: l.amount == null ? null : -Number(l.amount), note: l.note, kind: l.kind,
   }));
   try {
     const { docNo } = await createDoc(env, d.doc_type, {

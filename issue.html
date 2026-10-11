@@ -19,7 +19,7 @@
   <tbody id="bd"><tr><td colspan="8" class="muted">輸入專案號載入現行 BOM</td></tr></tbody></table>
   </div>
   <h3 style="margin-top:12px">BOM 以外的料（補料／替代料）</h3>
-  <table><thead><tr><th>料號</th><th class="n">數量</th><th>出庫倉</th><th id="xnoteh">備註</th><th></th></tr></thead><tbody id="extra"></tbody></table>
+  <table><thead><tr><th>料號</th><th class="n">數量</th><th>出庫倉</th><th title="損耗＝產線弄壞重領，算進當時成本、不算報價成本。漏開／開錯請 PM 到 /pm 改 BOM">類型</th><th id="xnoteh">備註</th><th></th></tr></thead><tbody id="extra"></tbody></table>
   <button id="addx">＋ 加一列</button>
   <div class="grid" style="margin-top:10px">
     <label>領料日期<input type="date" id="dd"></label>
@@ -61,7 +61,7 @@ async function load(){
     U.$('logs').innerHTML=(d.logs||[]).map(function(x){return'<tr><td>'+U.esc(String(x.ts||'').slice(0,16).replace('T',' '))+'</td><td>'+U.esc(x.actor)+'</td><td>'+U.esc(x.action)+'</td><td>'+U.esc(x.summary||((x.field||'')+' '+(x.old_value||'')+' → '+(x.new_value||'')))+'</td></tr>'}).join('')||'<tr><td colspan="4" class="muted">沒有紀錄</td></tr>';
   }catch(e){U.msg(e.message,'err')}
 }
-function xrow(){var tr=document.createElement('tr');tr.innerHTML='<td><input data-xp placeholder="料號"></td><td class="n"><input class="q" data-xq></td><td>'+U.whSel('data-xw','Z')+'</td><td><input data-xn></td><td><button data-xdel>✕</button></td>';U.$('extra').appendChild(tr)}
+function xrow(){var tr=document.createElement('tr');tr.innerHTML='<td><input data-xp placeholder="料號"></td><td class="n"><input class="q" data-xq></td><td>'+U.whSel('data-xw','Z')+'</td><td><select data-xk><option value="">一般</option><option value="loss">損耗</option></select></td><td><input data-xn></td><td><button data-xdel>✕</button></td>';U.$('extra').appendChild(tr)}
 U.$('go').onclick=load;U.$('pj').onkeydown=function(e){if(e.key==='Enter')load()};
 U.$('onlyLeft').onchange=render;
 U.$('bd').addEventListener('change',function(e){var t=e.target;if(t.dataset.i!=null)QTY[t.dataset.i]=U.num(t.value)||'';if(t.dataset.w!=null)WHS[t.dataset.w]=t.value});
@@ -73,8 +73,9 @@ U.$('save').onclick=async function(){
   var lines=[];
   Object.keys(QTY).forEach(function(i){var q=U.num(QTY[i]);if(q>0)lines.push({part_no:ROWS[i].part_no,name:ROWS[i].name,qty:q,wh_code:WHS[i]||bestWh(ROWS[i])})});
   U.$('extra').querySelectorAll('tr').forEach(function(tr){var p=tr.querySelector('[data-xp]').value.trim(),q=U.num(tr.querySelector('[data-xq]').value);
-    if(p&&q>0)lines.push({part_no:p,qty:q,wh_code:tr.querySelector('[data-xw]').value,note:tr.querySelector('[data-xn]').value.trim()})});
+    if(p&&q>0)lines.push({part_no:p,qty:q,wh_code:tr.querySelector('[data-xw]').value,note:tr.querySelector('[data-xn]').value.trim(),kind:tr.querySelector('[data-xk]').value||null})});
   if(!lines.length){U.msg('沒有要領的料（本次數量都是 0）','err');return}
+  if(lines.some(function(l){return l.kind==='loss'&&!l.note})){U.msg('損耗補料要寫原因（例：產線打壞、測試燒毀）','err');return}
   if(SHIP&&lines.some(function(l){return!l.note})){U.msg('已出貨的專案只能補料，每一列都要寫原因','err');return}
   if(!confirm('專案 '+PJ+' 建立領料單，共 '+lines.length+' 列，確定扣帳？'))return;
   this.disabled=true;

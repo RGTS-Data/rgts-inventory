@@ -83,10 +83,10 @@ export function createStmts(env, h, lines) {
     h.project_no ?? null, h.note ?? null, h.email, nowIso(), h.reverses ?? null,
     h.invoice_date ?? null, h.currency ?? null, h.fx_rate ?? null)];
   lines.forEach((l, i) => S.push(env.DB.prepare(
-    `INSERT INTO inv_doc_lines (doc_id, seq, part_no, name, qty, wh_code, to_wh, po_line_id, po_no, unit_price, amount, note)
-     VALUES ((SELECT id FROM inv_docs WHERE doc_no = ?),?,?,?,?,?,?,?,?,?,?,?)`
+    `INSERT INTO inv_doc_lines (doc_id, seq, part_no, name, qty, wh_code, to_wh, po_line_id, po_no, unit_price, amount, note, kind)
+     VALUES ((SELECT id FROM inv_docs WHERE doc_no = ?),?,?,?,?,?,?,?,?,?,?,?,?)`
   ).bind(h.doc_no, i + 1, l.part_no || null, l.name || null, l.qty, l.wh_code || null, l.to_wh || null,
-    l.po_line_id || null, l.po_no || null, l.unit_price ?? null, l.amount ?? null, l.note || null)));
+    l.po_line_id || null, l.po_no || null, l.unit_price ?? null, l.amount ?? null, l.note || null, l.kind || null)));
   return S;
 }
 
@@ -120,4 +120,5 @@ export const parseLines = (arr) => (Array.isArray(arr) ? arr : []).map((l) => ({
   to_wh: String(l.to_wh ?? '').trim().toUpperCase() || null,
   po_line_id: Number(l.po_line_id) || null,
   note: l.note ? String(l.note).trim() : null,
+  kind: l.kind === 'loss' ? 'loss' : null,   // 目前只認 loss（產線損耗）
 }));
