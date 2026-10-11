@@ -57,7 +57,7 @@ a.kpi:hover{border-color:var(--ac)}
   <button id="clr">✕ 清除所有篩選</button>
   <button id="xls">📊 匯出 Excel</button>
   <button id="cw">↔ 欄寬重設</button>
-  <button id="sync">🔄 從 Google Sheet「庫存表」同步</button>
+  <a href="/import.html"><button type="button">📥 Excel 匯入</button></a>
   <span id="syncmsg"></span>
 </div>
 <div id="last"></div>
@@ -151,7 +151,7 @@ a.kpi:hover{border-color:var(--ac)}
         if(c.k==='location') return'<td class="loc" data-loc="'+esc(r.part_no)+'|'+esc(r.wh_code)+'" title="點一下修改儲位">'+(v?esc(v):'<span style="color:#bbb">＋</span>')+'</td>';
         if(c.k==='part_no') return'<td title="'+esc(v)+'"><a class="pn" href="/part.html?part='+encodeURIComponent(v)+'">'+esc(v)+'</a></td>';
         return'<td class="'+(c.t==='n'?'n':'')+'" title="'+esc(v)+'">'+esc(c.t==='n'&&v!==''?fmt(num(v)):v)+'</td>'}).join('')+'</tr>';}
-    $('bd').innerHTML=html||'<tr><td colspan="'+COLS.length+'" class="empty">'+(ROWS.length?'沒有符合篩選的資料':'尚無資料（按右上「從 Google Sheet 同步」）')+'</td></tr>';
+    $('bd').innerHTML=html||'<tr><td colspan="'+COLS.length+'" class="empty">'+(ROWS.length?'沒有符合篩選的資料':'尚無資料（到「Excel 匯入」上傳正航存量明細表）')+'</td></tr>';
     // 合計：跟畫面同一份 list，數字收尾一致
     var sums={};COLS.forEach(function(c){if(c.sum)sums[c.k]=0});
     list.forEach(function(r){for(var k in sums)sums[k]+=num(r[k])});
@@ -286,7 +286,8 @@ a.kpi:hover{border-color:var(--ac)}
     '（空白列 '+d.blank+'、缺料號或倉庫 '+d.no_key+'、同料號同倉重複合併 '+d.merged_dup+'）'}
   async function last(){try{var d=await (await INVAuth.authedFetch('/api/admin/last-sync?_='+Date.now())).json();
     $('last').textContent='最近同步：'+(d.rows||[]).map(function(x){return String(x.ts).slice(0,16).replace('T',' ')+' '+x.source+'（'+x.row_count+' 列）'}).join('；')}catch(e){}}
-  $('sync').onclick=async function(){
+  // 「從 Google Sheet 同步」鈕已拿掉（Chris 2026-10-11：之後改放 Drive 資料夾）；保留程式，鈕不在就不綁
+  if($('sync'))$('sync').onclick=async function(){
     var m=$('syncmsg'),btn=this;btn.disabled=true;
     try{m.textContent='試算中…';var force='',d;
       try{d=await post('/api/admin/sync-sheet?dry=1')}catch(e){
