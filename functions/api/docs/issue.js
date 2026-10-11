@@ -1,5 +1,6 @@
 // POST /api/docs/issue  領料單（以專案為單位；正航是「訂單轉銷貨單」代用）→ 建單即過帳扣庫存
-// body: { doc_date, project_no, note, lines:[{part_no, qty, wh_code, note}] }
+// body: { doc_date, project_no, note, lines:[{part_no, qty, wh_code, note, kind}] }
+// kind='loss'＝產線損耗補料（bom-tool 當時成本會算進去、報價成本不算）
 // 任何一列庫存不足 → 整張不過帳（409）。
 import { requireAuth } from '../_lib/auth.js';
 import { ok, err, readBody } from '../_lib/json.js';
@@ -18,6 +19,7 @@ export async function onRequestPost({ request, env }) {
   if (!project) return err('專案號必填');
   if (!lines.length) return err('至少要有一列');
   if (lines.length > 80) return err('一張單最多 80 列');
+  if (lines.some((l) => l.kind === 'loss' && !l.note)) return err('損耗補料要寫原因', 400, { code: 'loss_need_reason' });
   if (!(await projectKnown(env, project))) return err(`查無專案 ${project}（BOM 與專案總表都沒有）`, 404, { code: 'project_unknown' });
   // 已出貨的專案不再依 BOM 領料，只能補料：每列都要寫原因（Chris 2026-10-11）
   const sh = await shippedInfo(env, project);
