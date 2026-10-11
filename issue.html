@@ -9,6 +9,7 @@
   <span id="info" class="muted"></span>
 </div>
 
+<div id="shipwarn" class="warn" style="display:none"></div>
 <div class="card">
   <h3>BOM 需求與領料</h3>
   <div class="bar"><label><input type="checkbox" id="onlyLeft" checked> 只顯示尚需 &gt; 0</label>
@@ -18,7 +19,7 @@
   <tbody id="bd"><tr><td colspan="8" class="muted">輸入專案號載入現行 BOM</td></tr></tbody></table>
   </div>
   <h3 style="margin-top:12px">BOM 以外的料（補料／替代料）</h3>
-  <table><thead><tr><th>料號</th><th class="n">數量</th><th>出庫倉</th><th>備註</th><th></th></tr></thead><tbody id="extra"></tbody></table>
+  <table><thead><tr><th>料號</th><th class="n">數量</th><th>出庫倉</th><th id="xnoteh">備註</th><th></th></tr></thead><tbody id="extra"></tbody></table>
   <button id="addx">＋ 加一列</button>
   <div class="grid" style="margin-top:10px">
     <label>領料日期<input type="date" id="dd"></label>
@@ -33,7 +34,7 @@
 
 <script src="/_lib/auth.js"></script><script src="/_lib/common.js"></script>
 <script>
-var PJ='', ROWS=[], QTY={}, WHS={};
+var PJ='', ROWS=[], QTY={}, WHS={}, SHIP=null;
 function leftOf(r){return Math.max(0,Math.round((r.need-r.issued)*1e6)/1e6)}
 function bestWh(r){return (r.stock.slice().sort(function(a,b){return b.qty-a.qty})[0]||{wh:'Z'}).wh}
 function render(){
@@ -44,13 +45,17 @@ function render(){
     return '<tr><td><a class="pn" href="/part.html?part='+encodeURIComponent(r.part_no)+'" target="_blank">'+U.esc(r.part_no)+'</a>'+(r.spare?' <span class="tag wait">含補料</span>':'')+'</td>'+
       '<td>'+U.esc(r.name)+'<div class="muted">'+U.esc(r.spec||'')+'</div></td><td class="n">'+U.fmt(r.need)+'</td><td class="n">'+U.fmt(r.issued)+'</td>'+
       '<td class="n">'+(l>0?'<b>'+U.fmt(l)+'</b>':'<span class="tag ok">已領足</span>')+'</td><td>'+whs+'</td>'+
-      '<td class="n"><input class="q" data-i="'+i+'" value="'+(QTY[i]||'')+'" placeholder="0"></td><td>'+U.whSel('data-w="'+i+'"',WHS[i]||bestWh(r),r.stock.map(function(s){return s.wh}))+'</td></tr>';
+      '<td class="n"><input class="q" data-i="'+i+'" value="'+(QTY[i]||'')+'" placeholder="0"'+(SHIP?' disabled':'')+'></td><td>'+U.whSel('data-w="'+i+'"'+(SHIP?' disabled':''),WHS[i]||bestWh(r),r.stock.map(function(s){return s.wh}))+'</td></tr>';
   }).join('')||'<tr><td colspan="8" class="muted">沒有需要領的料</td></tr>';
 }
 async function load(){
   if(!/^已建立/.test(U.$('msg').textContent))U.msg('載入中…');QTY={};WHS={};
   try{var d=await U.api('/api/issue/project?project_no='+encodeURIComponent(U.$('pj').value)+'&_='+Date.now());
-    PJ=d.project_no;ROWS=d.rows;render();if(/中…$/.test(U.$('msg').textContent))U.msg('');
+    PJ=d.project_no;ROWS=d.rows;SHIP=d.shipped||null;
+    var sw=U.$('shipwarn');sw.style.display=SHIP?'':'none';
+    if(SHIP)sw.innerHTML='⚠ 專案 '+U.esc(PJ)+' 已出貨（'+U.esc(SHIP.ship_date||SHIP.status)+'）：BOM 需求不能再領，只能在下方「BOM 以外的料」<b>補料</b>，每一列都要寫原因。';
+    U.$('fill').disabled=!!SHIP;U.$('xnoteh').textContent=SHIP?'補料原因（必填）':'備註';
+    render();if(/中…$/.test(U.$('msg').textContent))U.msg('');
     U.$('info').textContent=d.bom?('專案 '+PJ+'｜'+(d.bom.model||'')+'｜台數 '+(d.bom.units||'?')+'｜'+d.rows.length+' 項'):('專案 '+PJ+' 沒有現行 BOM（可用下方「BOM 以外的料」領料）');
     U.$('docs').innerHTML=(d.docs||[]).map(function(x){return'<tr><td><a class="pn" href="/docs.html?doc='+x.doc_no+'">'+x.doc_no+'</a></td><td>'+U.TYPE[x.doc_type]+'</td><td>'+x.doc_date+'</td><td>'+(U.STATUS[x.status]||x.status)+'</td><td class="n">'+x.line_count+'</td><td class="muted">'+U.esc(x.created_by)+'</td></tr>'}).join('')||'<tr><td colspan="6" class="muted">尚無</td></tr>';
     U.$('logs').innerHTML=(d.logs||[]).map(function(x){return'<tr><td>'+U.esc(String(x.ts||'').slice(0,16).replace('T',' '))+'</td><td>'+U.esc(x.actor)+'</td><td>'+U.esc(x.action)+'</td><td>'+U.esc(x.summary||((x.field||'')+' '+(x.old_value||'')+' → '+(x.new_value||'')))+'</td></tr>'}).join('')||'<tr><td colspan="4" class="muted">沒有紀錄</td></tr>';
@@ -70,6 +75,7 @@ U.$('save').onclick=async function(){
   U.$('extra').querySelectorAll('tr').forEach(function(tr){var p=tr.querySelector('[data-xp]').value.trim(),q=U.num(tr.querySelector('[data-xq]').value);
     if(p&&q>0)lines.push({part_no:p,qty:q,wh_code:tr.querySelector('[data-xw]').value,note:tr.querySelector('[data-xn]').value.trim()})});
   if(!lines.length){U.msg('沒有要領的料（本次數量都是 0）','err');return}
+  if(SHIP&&lines.some(function(l){return!l.note})){U.msg('已出貨的專案只能補料，每一列都要寫原因','err');return}
   if(!confirm('專案 '+PJ+' 建立領料單，共 '+lines.length+' 列，確定扣帳？'))return;
   this.disabled=true;
   try{var r=await U.api('/api/docs/issue',{project_no:PJ,doc_date:U.$('dd').value,note:U.$('note').value.trim(),lines:lines});

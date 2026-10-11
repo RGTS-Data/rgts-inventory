@@ -6,6 +6,7 @@ import { ok, err, readBody } from '../_lib/json.js';
 import { createDoc, docDate, parseLines } from '../_lib/docs.js';
 import { projKey } from '../_lib/projkey.js';
 import { projectKnown } from '../_lib/project-known.js';
+import { shippedInfo } from '../_lib/shipped.js';
 
 export async function onRequestPost({ request, env }) {
   const { user, failed } = requireAuth(request, env);
@@ -18,6 +19,11 @@ export async function onRequestPost({ request, env }) {
   if (!lines.length) return err('至少要有一列');
   if (lines.length > 80) return err('一張單最多 80 列');
   if (!(await projectKnown(env, project))) return err(`查無專案 ${project}（BOM 與專案總表都沒有）`, 404, { code: 'project_unknown' });
+  // 已出貨的專案不再依 BOM 領料，只能補料：每列都要寫原因（Chris 2026-10-11）
+  const sh = await shippedInfo(env, project);
+  if (sh && lines.some((l) => !l.note)) {
+    return err(`專案 ${project} 已出貨（${sh.ship_date || sh.status}），只能補料：每一列都要寫原因`, 409, { code: 'shipped_need_reason' });
+  }
   try {
     const { docNo } = await createDoc(env, 'issue', { doc_date: docDate(b.doc_date), status: 'draft', project_no: project, note: b.note || null },
       lines, { post: true, email: user.email, project });

@@ -4,6 +4,7 @@ import { requireAuth } from '../_lib/auth.js';
 import { ok, err } from '../_lib/json.js';
 import { chunk, normPart } from '../_lib/util.js';
 import { projKey } from '../_lib/projkey.js';
+import { shippedInfo } from '../_lib/shipped.js';
 
 export async function onRequestGet({ request, env }) {
   const { failed } = requireAuth(request, env);
@@ -58,5 +59,7 @@ export async function onRequestGet({ request, env }) {
     `SELECT doc_no, doc_type, doc_date, status, created_by, reverses, reversed_by, (SELECT COUNT(*) FROM inv_doc_lines l WHERE l.doc_id = d.id) AS line_count
      FROM inv_docs d WHERE project_no = ? ORDER BY id DESC LIMIT 100`
   ).bind(key).all()).results || [];
-  return ok({ project_no: key, bom: bp || null, rows, logs, docs });
+  // 已出貨（專案總表有出貨日或已開發票）→ 前端鎖 BOM 需求、只允許「補料」並寫原因（Chris 2026-10-11）
+  const shipped = await shippedInfo(env, key);
+  return ok({ project_no: key, bom: bp || null, rows, logs, docs, shipped });
 }
