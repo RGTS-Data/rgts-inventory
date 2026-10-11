@@ -8,7 +8,7 @@
 }
 *{box-sizing:border-box}
 body{margin:0;font-family:system-ui,-apple-system,"Noto Sans TC","Microsoft JhengHei",sans-serif;
-  color:var(--ink);background:var(--bg);font-size:14px;line-height:1.5}
+  color:var(--ink);background:var(--bg);font-size:13px;line-height:1.5}
 /* 內容區：置頂列以外的東西左右留白（頁面本身沒有外層容器） */
 body>:not(header.top):not(.vm):not(script){margin-left:16px;margin-right:16px}
 header.top{margin-bottom:14px}
@@ -16,29 +16,29 @@ header.top{margin-bottom:14px}
 /* 置頂列（nav.js 產生） */
 header.top{position:sticky;top:0;z-index:30;background:var(--top);color:#fff;padding:9px 16px;
   display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-header.top h1{font-size:16px;margin:0 8px 0 0;font-weight:700;letter-spacing:.5px;white-space:nowrap}
+header.top h1{font-size:15px;margin:0 8px 0 0;font-weight:700;letter-spacing:.5px;white-space:nowrap}
 header.top .spacer{flex:1}
-header.top a.nv{color:#cbd5e1;text-decoration:none;font-size:13px;border:1px solid var(--top-line);border-radius:8px;padding:4px 10px;white-space:nowrap}
+header.top a.nv{color:#cbd5e1;text-decoration:none;font-size:12px;border:1px solid var(--top-line);border-radius:8px;padding:4px 10px;white-space:nowrap}
 header.top a.nv:hover{background:var(--top2);color:#fff}
 header.top a.nv.on{background:var(--ac);border-color:var(--ac);color:#fff;font-weight:600}
-.userchip{display:flex;align-items:center;gap:8px;font-size:13px;color:#cbd5e1}
+.userchip{display:flex;align-items:center;gap:8px;font-size:12px;color:#cbd5e1}
 .userchip .avatar{width:26px;height:26px;border-radius:50%;background:var(--ac);color:#fff;
-  display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px}
-.userchip button{background:transparent;border-color:var(--top-line);color:var(--top-ink);padding:3px 8px;font-size:12px}
+  display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px}
+.userchip button{background:transparent;border-color:var(--top-line);color:var(--top-ink);padding:3px 8px;font-size:11px}
 .userchip button:hover{background:var(--top2)}
 
 /* 標題：頁名已在置頂列，h2 只當頁內小標 */
-h2{margin:0 0 10px;font-size:15px;font-weight:700;color:var(--label)}
-h3{font-size:14px}
+h2{margin:0 0 10px;font-size:14px;font-weight:700;color:var(--label)}
+h3{font-size:13px}
 
 /* 控制項 */
 .bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:12px}
-input,select{padding:6px 10px;border:1px solid var(--line2);border-radius:8px;font:inherit;font-size:13px;background:#fff;color:var(--ink)}
+input,select{padding:6px 10px;border:1px solid var(--line2);border-radius:8px;font:inherit;font-size:12px;background:#fff;color:var(--ink)}
 input:focus,select:focus{outline:1.5px solid var(--ac);border-color:var(--ac)}
 input[type=checkbox]{padding:0;accent-color:var(--ac)}
-label{color:var(--label);font-size:13px}
+label{color:var(--label);font-size:12px}
 button{padding:6px 12px;border:1px solid var(--line2);border-radius:8px;background:#fff;color:var(--ink);
-  cursor:pointer;font:inherit;font-size:13px;font-weight:600}
+  cursor:pointer;font:inherit;font-size:12px;font-weight:600}
 button:hover{background:var(--hd)}
 button:disabled{opacity:.5;cursor:default}
 button.pri{background:var(--ac);color:#fff;border-color:var(--ac)}
@@ -47,14 +47,14 @@ input.q{width:78px;text-align:right}
 
 /* 卡片 */
 .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:0 0 12px}
-.card h3{margin:0 0 10px;font-size:14px;font-weight:700}
+.card h3{margin:0 0 10px;font-size:13px;font-weight:700}
 .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:10px 16px}
-.grid label{display:flex;flex-direction:column;gap:3px;font-size:12px;color:var(--muted);font-weight:600}
+.grid label{display:flex;flex-direction:column;gap:3px;font-size:11px;color:var(--muted);font-weight:600}
 
 /* 表格（index.html 的總表另有自己的格線版） */
 table{border-collapse:collapse;width:100%;background:var(--panel)}
 th,td{border-bottom:1px solid var(--line);padding:6px 8px;text-align:left;vertical-align:top}
-th{background:var(--hd);position:sticky;top:0;font-size:12px;color:var(--label);font-weight:700}
+th{background:var(--hd);position:sticky;top:0;font-size:11px;color:var(--label);font-weight:700}
 td.n,th.n{text-align:right;font-variant-numeric:tabular-nums}
 tbody tr:hover td{background:var(--hi)}
 tr.sel td{background:var(--sel)}
@@ -62,7 +62,7 @@ tr.sel td{background:var(--sel)}
 body>table{width:calc(100% - 32px);border:1px solid var(--line);border-radius:12px;overflow:hidden}
 
 /* 標籤／訊息 */
-.tag{display:inline-block;padding:1px 8px;border-radius:999px;font-size:12px;font-weight:700}
+.tag{display:inline-block;padding:1px 8px;border-radius:999px;font-size:11px;font-weight:700}
 .ok{background:#dcfce7;color:#166534}.bad{background:#fee2e2;color:#991b1b}.wait{background:#fef3c7;color:#92400e}
 .tag.muted{background:#f1f5f9;color:#475569}
 .muted{color:var(--muted)}          /* #64748b：白底 4.8:1，取代原本對比不足的 #888 */
@@ -70,6 +70,6 @@ body>table{width:calc(100% - 32px);border:1px solid var(--line);border-radius:12
 .err{color:var(--err)}.good{color:var(--ok)}
 a.pn{color:var(--ac);text-decoration:none;font-weight:600}a.pn:hover{text-decoration:underline}
 .warn{background:#fff7ed;border:1px solid #fdba74;border-radius:12px;padding:10px 14px;color:#7c2d12}
-pre{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 14px;white-space:pre-wrap;font-size:13px}
+pre{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:10px 14px;white-space:pre-wrap;font-size:12px}
 
 @media print{header.top,.bar button,button{display:none!important}body{background:#fff}}
