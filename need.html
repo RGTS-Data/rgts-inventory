@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>進貨需求</title><link rel="stylesheet" href="/_lib/app.css">
+<style>
+td.buy{font-weight:700;color:var(--err)}
+tr.zero td{color:var(--muted)}
+.sub{font-size:11px;color:var(--muted)}
+details summary{cursor:pointer;color:var(--ac);font-size:12px}
+details div{font-size:11px;line-height:1.6;white-space:nowrap}
+</style></head><body>
+<script src="/_lib/nav.js"></script>
+<h2>進貨需求（PMC 預排出貨 × BOM − 原料倉 − 在途）</h2>
+<div class="warn" style="margin-bottom:12px">
+  <b>算法：</b>需求＝PMC 有填「預排出貨日」的未出貨專案，現行 BOM 用量減掉該專案已領量 ／
+  可用＝<b>原料倉 Z</b>（委外倉 O 只列參考：委外回來常是加工品、料號不同）／
+  在途＝採購總表「未到貨」且未作廢的量（扣已過帳進貨），按料號合計不分專案 ／
+  <b>建議進貨＝需求 − 原料倉 − 在途</b>。替代料、損耗、MOQ 都沒算，下單前請自己再看一次。
+</div>
+<div class="bar">
+  <label>出貨日到 <input type="date" id="until"></label>
+  <input id="q" placeholder="料號／品名／專案">
+  <label><input type="checkbox" id="only" checked> 只看要進的</label>
+  <button id="go" class="pri">重新計算</button>
+  <button id="xls">匯出 Excel</button>
+  <span id="info" class="muted"></span>
+</div>
+<div id="msg" class="msg"></div>
+<table><thead><tr>
+  <th>料號</th><th>品名／規格</th><th class="n">需求</th><th class="n">原料倉 Z</th><th class="n">委外倉 O<br><span class="sub">參考</span></th>
+  <th class="n">在途</th><th class="n">建議進貨</th><th>最早出貨</th><th>專案</th><th>在途採購單</th>
+</tr></thead><tbody id="bd"></tbody></table>
+<div class="card" id="nobom" style="margin-top:12px;display:none"></div>
+<script src="/_lib/auth.js"></script>
+<script src="/_lib/common.js"></script>
+<script src="/_lib/xlsx.js"></script>
+<script>
+var $=U.$,esc=U.esc,fmt=U.fmt,D=null;
+function view(){
+  var q=$('q').value.trim().toUpperCase(),only=$('only').checked;
+  return (D?D.rows:[]).filter(function(r){
+    if(only&&!(r.buy>0))return false;
+    if(!q)return true;
+    return (r.part_no+' '+(r.name||'')+' '+(r.spec||'')+' '+r.projects.map(function(p){return p.key}).join(' ')).toUpperCase().indexOf(q)>=0;
+  });
+}
+function projTxt(p){return p.key+' ×'+fmt(p.qty)+'（'+(p.ship||p.planned_ship||'?')+(p.prepped?'・已備料':'')+'）'}
+function render(){
+  var list=view();
+  $('info').textContent=D?('專案 '+D.project_count+' 個・料號 '+D.rows.length+' 個・要進 '+D.rows.filter(function(r){return r.buy>0}).length+' 個・顯示 '+list.length):'';
+  $('bd').innerHTML=list.map(function(r){
+    var pj=r.projects.length===1?esc(projTxt(r.projects[0])):'<details><summary>'+r.projects.length+' 個專案</summary><div>'+r.projects.map(function(p){return esc(projTxt(p))}).join('<br>')+'</div></details>';
+    var po=!r.pos.length?'':'<details><summary>'+r.pos.length+' 張・'+fmt(r.on_order)+'</summary><div>'+r.pos.map(function(x){return esc(x.po_no+' '+(x.vendor||'')+' ×'+fmt(x.qty)+(x.eta?' '+x.eta:''))}).join('<br>')+'</div></details>';
+    return '<tr class="'+(r.buy>0?'':'zero')+'"><td><a class="pn" href="/part.html?part='+encodeURIComponent(r.part_no)+'">'+esc(r.part_no)+'</a></td>'+
+      '<td>'+esc(r.name||'')+'<div class="sub">'+esc(r.spec||'')+'</div></td>'+
+      '<td class="n">'+fmt(r.need)+'</td><td class="n">'+fmt(r.stock_z)+'</td><td class="n muted">'+(r.stock_o?fmt(r.stock_o):'')+'</td>'+
+      '<td class="n">'+(r.on_order?fmt(r.on_order):'')+'</td><td class="n buy">'+(r.buy>0?fmt(r.buy):'')+'</td>'+
+      '<td>'+esc(r.first_ship||'')+'</td><td>'+pj+'</td><td>'+po+'</td></tr>';
+  }).join('')||'<tr><td colspan="10" class="muted">'+(D?'沒有需要進貨的料':'計算中…')+'</td></tr>';
+  var nb=D?D.no_bom:[];
+  $('nobom').style.display=nb.length?'':'none';
+  $('nobom').innerHTML='<h3>⚠ 有預排出貨、但找不到現行 BOM 的專案（'+nb.length+'）— 這些的料沒算進上表</h3>'+
+    nb.map(function(p){return esc(p.key+'　'+(p.model||'')+'　'+(p.customer||'')+'　出貨 '+(p.ship||p.planned_ship||''))}).join('<br>');
+}
+async function load(){
+  U.msg('計算中…');
+  try{D=await U.api('/api/need/list?until='+encodeURIComponent($('until').value)+'&_='+Date.now());U.msg('')}
+  catch(e){U.msg('計算失敗：'+e.message,'err');D=null}
+  render();
+}
+$('go').onclick=load;$('only').onchange=render;$('q').oninput=render;
+$('xls').onclick=function(){
+  if(!D)return;
+  var rows=[['料號','品名','規格','需求','原料倉Z','委外倉O(參考)','在途','建議進貨','最早出貨','專案','在途採購單']];
+  view().forEach(function(r){rows.push([r.part_no,r.name||'',r.spec||'',r.need,r.stock_z,r.stock_o,r.on_order,r.buy,r.first_ship,
+    r.projects.map(projTxt).join('; '),r.pos.map(function(x){return x.po_no+'×'+x.qty}).join('; ')])});
+  INVXlsx.download('進貨需求_'+D.today.replace(/-/g,'')+'.xlsx',{sheet:'進貨需求',rows:rows,widths:[20,24,30,8,9,10,8,9,11,40,30],textCols:[0,8]});
+};
+INVAuth.tryAutoLogin().then(load);
+</script></body></html>
