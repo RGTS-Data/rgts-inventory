@@ -1,7 +1,7 @@
 /* 全站置頂列（classic script）：<script src="/_lib/nav.js"></script> 放在 <body> 最前面。
    版型比照 rgts-pmc：深色列＝系統名＋頁名＋各頁連結＋使用者。頁面的第一個 h2 會被搬進置頂列當頁名。 */
 (function () {
-  var L = [['/', '庫存總表'], ['/part.html', '料號查詢'], ['/receipt.html', '進貨單'], ['/issue.html', '領料單'],
+  var L = [['/', '庫存總表'], ['/part.html', '料號查詢'], ['/receipt.html', '進貨單'], ['/issue.html', '領料單'], ['/reserve.html', '母單保留'],
     ['/transfer.html', '調撥單'], ['/docs.html', '單據查詢／核對'], ['/moves.html', '流水帳'], ['/import.html', 'Excel 匯入'],
     // 客供料（有序號的）進料／備料在序號站管，不進本系統的倉別數量（Chris 2026-10-11：不同步）
     ['https://rgts-serial.pages.dev/consigned.html', '🧰 客供品管理']];

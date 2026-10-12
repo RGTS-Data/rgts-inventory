@@ -42,6 +42,9 @@ function render(){
   U.$('bd').innerHTML=ROWS.map(function(r,i){
     var l=leftOf(r); if(only&&l<=0&&!QTY[i])return '';
     var whs=r.stock.length?r.stock.map(function(s){return U.esc(s.wh)+':'+U.fmt(s.qty)+(s.loc?' <span class="tag muted">'+U.esc(s.loc)+'</span>':'')}).join('　'):'<span class="err">無庫存</span>';
+    // 母單保留（/reserve.html）：保留給別張母單的量，這張單不該拿；本專案是提貨單的話，那份就是給它的
+    if(r.reserved_other>0)whs+='<div class="err">其中 '+U.fmt(r.reserved_other)+' 保留給母單 '+U.esc((r.reserved_by||[]).join('、'))+'（可領 '+U.fmt(Math.max(0,r.on_hand-r.reserved_other))+'）</div>';
+    if(r.reserved_mine>0)whs+='<div class="muted">母單保留中 '+U.fmt(r.reserved_mine)+'（本專案可用）</div>';
     return '<tr><td><a class="pn" href="/part.html?part='+encodeURIComponent(r.part_no)+'" target="_blank">'+U.esc(r.part_no)+'</a>'+(r.spare?' <span class="tag wait">含補料</span>':'')+'</td>'+
       '<td>'+U.esc(r.name)+'<div class="muted">'+U.esc(r.spec||'')+'</div></td><td class="n">'+U.fmt(r.need)+'</td><td class="n">'+U.fmt(r.issued)+'</td>'+
       '<td class="n">'+(l>0?'<b>'+U.fmt(l)+'</b>':'<span class="tag ok">已領足</span>')+'</td><td>'+whs+'</td>'+
@@ -77,6 +80,11 @@ U.$('save').onclick=async function(){
   if(!lines.length){U.msg('沒有要領的料（本次數量都是 0）','err');return}
   if(lines.some(function(l){return l.kind==='loss'&&!l.note})){U.msg('損耗補料要寫原因（例：產線打壞、測試燒毀）','err');return}
   if(SHIP&&lines.some(function(l){return!l.note})){U.msg('已出貨的專案只能補料，每一列都要寫原因','err');return}
+  // 吃到別張母單保留的料 → 不擋，但要人確認（保留是軟性的，擋死會卡產線）
+  var over=[];lines.forEach(function(l){var r=ROWS.find(function(x){return x.part_no===l.part_no});
+    if(r&&r.reserved_other>0){var tot=lines.filter(function(y){return y.part_no===l.part_no}).reduce(function(a,y){return a+y.qty},0);
+      if(tot>r.on_hand-r.reserved_other+1e-9&&over.indexOf(l.part_no)<0)over.push(l.part_no+'（保留給 '+(r.reserved_by||[]).join('、')+'）')}});
+  if(over.length&&!confirm('以下料號會用到別張母單保留的庫存：\n'+over.join('\n')+'\n\n確定還是要領？'))return;
   if(!confirm('專案 '+PJ+' 建立領料單，共 '+lines.length+' 列，確定扣帳？'))return;
   this.disabled=true;
   try{var r=await U.api('/api/docs/issue',{project_no:PJ,doc_date:U.$('dd').value,note:U.$('note').value.trim(),lines:lines});
