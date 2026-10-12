@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>母單保留</title><link rel="stylesheet" href="/_lib/app.css"></head><body>
+<script src="/_lib/nav.js"></script>
+<h2>母單保留（分批提貨的料）</h2>
+<div class="bar">
+  <input id="pj" placeholder="母單專案號，例 2347、2165(2)" style="width:260px">
+  <button id="go" class="pri">載入</button>
+  <span id="info" class="muted"></span>
+</div>
+<div class="card">
+  <p class="muted">客戶一次下單 N 台、之後分批提貨：先把母單的料保留下來，別的專案領料時會看到「保留給母單」並要確認。
+  提貨單（專案總表「母單」欄掛上的）照自己的 BOM 領料，保留剩餘自動扣。換規格被換下來的料，母單結束時按「釋放」回到一般庫存。</p>
+  <div id="kids" class="muted"></div>
+  <div class="bar"><button id="fillBom">保留量＝BOM 需求 − 已提貨領走</button><button id="clear">保留量全部清 0</button></div>
+  <div style="max-height:55vh;overflow:auto">
+  <table><thead><tr><th>料號</th><th>品名規格</th><th class="n">母單 BOM 需求</th><th class="n">提貨單已領</th><th class="n">保留量</th><th class="n">保留剩餘</th><th class="n">現有庫存</th><th>備註</th></tr></thead>
+  <tbody id="bd"><tr><td colspan="8" class="muted">輸入母單專案號</td></tr></tbody></table>
+  </div>
+  <h3 style="margin-top:12px">BOM 以外要保留的料</h3>
+  <table><thead><tr><th>料號</th><th class="n">保留量</th><th>備註</th><th></th></tr></thead><tbody id="extra"></tbody></table>
+  <button id="addx">＋ 加一列</button>
+  <p><button id="save" class="pri">儲存保留</button> <button id="release">釋放全部保留</button> <span class="muted">釋放不刪資料，只是不再算保留</span></p>
+  <div id="msg" class="msg"></div>
+</div>
+<script src="/_lib/auth.js"></script><script src="/_lib/common.js"></script>
+<script>
+var PJ='',ROWS=[],Q={},N={};
+function render(){
+  U.$('bd').innerHTML=ROWS.map(function(r,i){
+    var q=Q[i]!=null?Q[i]:r.reserved;
+    var left=Math.max(0,U.num(q)-r.taken);
+    return '<tr><td><a class="pn" href="/part.html?part='+encodeURIComponent(r.part_no)+'" target="_blank">'+U.esc(r.part_no)+'</a></td>'+
+      '<td>'+U.esc(r.name||'')+'<div class="muted">'+U.esc(r.spec||'')+'</div></td><td class="n">'+(r.need?U.fmt(r.need):'<span class="muted">BOM 外</span>')+'</td>'+
+      '<td class="n">'+U.fmt(r.taken)+'</td><td class="n"><input class="q" data-i="'+i+'" value="'+(q||'')+'" placeholder="0"></td>'+
+      '<td class="n">'+(left>0?'<b>'+U.fmt(left)+'</b>':'<span class="muted">0</span>')+'</td>'+
+      '<td class="n">'+(r.on_hand<left?'<span class="err">'+U.fmt(r.on_hand)+'</span>':U.fmt(r.on_hand))+'</td>'+
+      '<td><input data-n="'+i+'" value="'+U.esc(N[i]!=null?N[i]:(r.note||''))+'"></td></tr>';
+  }).join('')||'<tr><td colspan="8" class="muted">這張母單沒有現行 BOM，也還沒有保留；可在下方手動加料</td></tr>';
+}
+async function load(){
+  U.msg('載入中…');Q={};N={};
+  try{var d=await U.api('/api/reserve/get?project_no='+encodeURIComponent(U.$('pj').value)+'&_='+Date.now());
+    PJ=d.project_no;ROWS=d.rows;render();U.msg('');
+    U.$('info').textContent='母單 '+PJ+(d.bom?'｜'+(d.bom.model||'')+'｜BOM 台數 '+(d.bom.units||'?'):'｜沒有現行 BOM')+(d.released?'｜已釋放過 '+d.released.n+' 筆':'');
+    U.$('kids').innerHTML=d.kids.length?'提貨單：'+d.kids.map(function(k){return U.esc(k.project_no)+' ×'+U.fmt(k.qty)}).join('、')
+      :'<span class="err">專案總表還沒有掛任何提貨單（到專案總表「母單」欄掛上，已領量才算得到）</span>';
+  }catch(e){U.msg(e.message,'err')}
+}
+function xrow(){var tr=document.createElement('tr');tr.innerHTML='<td><input data-xp placeholder="料號"></td><td class="n"><input class="q" data-xq></td><td><input data-xn></td><td><button data-xdel>✕</button></td>';U.$('extra').appendChild(tr)}
+U.$('go').onclick=load;U.$('pj').onkeydown=function(e){if(e.key==='Enter')load()};
+U.$('bd').addEventListener('change',function(e){var t=e.target;if(t.dataset.i!=null){Q[t.dataset.i]=U.num(t.value);render()}if(t.dataset.n!=null)N[t.dataset.n]=t.value});
+U.$('fillBom').onclick=function(){ROWS.forEach(function(r,i){if(r.need>0)Q[i]=r.need});render();U.msg('保留量已帶入 BOM 需求（保留剩餘會自動扣掉提貨單已領的）。確認後按「儲存保留」')};
+U.$('clear').onclick=function(){ROWS.forEach(function(r,i){Q[i]=0});render()};
+U.$('addx').onclick=xrow;U.$('extra').onclick=function(e){if(e.target.dataset.xdel!=null)e.target.closest('tr').remove()};
+U.$('save').onclick=async function(){
+  if(!PJ){U.msg('請先載入母單','err');return}
+  var lines=[];ROWS.forEach(function(r,i){var q=Q[i]!=null?Q[i]:r.reserved,n=N[i]!=null?N[i]:(r.note||'');
+    if(U.num(q)!==r.reserved||n!==(r.note||''))lines.push({part_no:r.part_no,qty:U.num(q),note:n})});
+  U.$('extra').querySelectorAll('tr').forEach(function(tr){var p=tr.querySelector('[data-xp]').value.trim(),q=U.num(tr.querySelector('[data-xq]').value);
+    if(p&&q>0)lines.push({part_no:p,qty:q,note:tr.querySelector('[data-xn]').value.trim()})});
+  if(!lines.length){U.msg('沒有變更','err');return}
+  this.disabled=true;
+  try{var r=await U.api('/api/reserve/save',{project_no:PJ,lines:lines});U.$('extra').innerHTML='';await load();U.msg('已儲存 '+r.saved+' 列','good')}
+  catch(e){U.msg(e.message,'err')}finally{this.disabled=false}
+};
+U.$('release').onclick=async function(){
+  if(!PJ){U.msg('請先載入母單','err');return}
+  if(!confirm('母單 '+PJ+' 的保留全部釋放？\n（母單提貨完了、換下來的料要回到一般庫存時用）'))return;
+  try{var r=await U.api('/api/reserve/release',{project_no:PJ});await load();U.msg('已釋放 '+r.released+' 筆','good')}catch(e){U.msg(e.message,'err')}
+};
+INVAuth.tryAutoLogin().then(function(){var p=new URLSearchParams(location.search).get('project');if(p){U.$('pj').value=p;load()}});
+</script></body></html>
