@@ -78,4 +78,8 @@ U.$('save').onclick=async function(){
   }catch(e){U.msg(e.message,'err');if(e.code==='jig_required')U.$('jigbox').scrollIntoView({behavior:'smooth',block:'center'})}finally{this.disabled=false}
 };
 U.$('dd').value=U.today();row();refreshJig();INVAuth.tryAutoLogin();
-</script></body></html>
+</script>
+<!-- ISO 9001 四階表單編號（QMS registry），列印時隱藏 -->
+<style>.iso-form-no{position:fixed;right:8px;bottom:6px;z-index:9999;pointer-events:none;font:11px/1.4 ui-monospace,Menlo,Consolas,monospace;color:#6b7785;background:rgba(255,255,255,.85);border:1px solid #d5dbe1;border-radius:4px;padding:1px 6px}@media print{.iso-form-no{display:none}}</style>
+<div class="iso-form-no">ISO 表單 8083A 調撥單</div>
+</body></html>
