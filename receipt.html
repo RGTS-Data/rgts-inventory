@@ -3,14 +3,15 @@
 <title>進貨單</title><link rel="stylesheet" href="/_lib/app.css"></head><body>
 <script src="/_lib/nav.js"></script>
 <h2>進貨單（從採購單帶入）</h2>
-<p class="muted">① 查採購單 → 勾要進貨的明細、填數量 → ② 有發票就填（沒有可留空，之後在「單據查詢」補）→ 存成「待核對」→ ③ 阿國「確認收貨」就入庫；發票金額另外核對。運費這種沒料號的列可以勾，只算金額不入庫。採購總表到貨日目前<b>不會</b>回寫。</p>
+<p class="muted">① 查採購單（<b>多張採購單</b>：單號用空白或逗號隔開一次查，或查完一張勾好再查下一張，已勾的會留著）→ 勾要進貨的明細、填數量 → ② 有發票就填（沒有可留空，之後在「單據查詢」補）→ 存成「待核對」→ ③ 阿國「確認收貨」就入庫；發票金額另外核對。運費這種沒料號的列可以勾，只算金額不入庫。採購總表到貨日目前<b>不會</b>回寫。</p>
 
 <div class="card">
   <h3>① 查採購單</h3>
   <div class="bar">
-    <input id="q" placeholder="採購單號 / 料號 / 廠商 / 專案" style="width:280px">
+    <input id="q" placeholder="採購單號 / 料號 / 廠商 / 專案（多張用空白或逗號隔開）" style="width:380px">
     <label><input type="checkbox" id="all"> 含已入滿</label>
     <button id="go" class="pri">查詢</button>
+    <button id="unsel">清除已勾選</button>
     <span id="info" class="muted"></span>
   </div>
   <div style="max-height:45vh;overflow:auto">
@@ -40,12 +41,17 @@
 
 <script src="/_lib/auth.js"></script><script src="/_lib/common.js"></script>
 <script>
-var ROWS=[], SEL={};   // SEL[id] = {qty, wh}
+var ROWS=[], SEL={};   // SEL[id] = {qty, wh, row}；row＝勾選當下的採購明細，換查詢條件後已勾的列照樣留著（一張進貨單可含多張採購單）
 function key(x){return String(x.id)}
 function cur(x){var c=String(x.currency||'').trim().toUpperCase();return !c||c==='TWD'||c==='NT'?'NTD':c}
 function left(x){return Math.max(0,U.num(x.qty)-x.received-x.pending)}
+function view(){   // 畫面列＝其他查詢已勾的列（置頂）＋本次查詢結果
+  var here={};ROWS.forEach(function(x){here[key(x)]=1});
+  return Object.keys(SEL).filter(function(id){return !here[id]&&SEL[id].row}).map(function(id){return SEL[id].row}).concat(ROWS);
+}
+function findRow(id){return ROWS.find(function(r){return String(r.id)===id})||(SEL[id]&&SEL[id].row)}
 function render(){
-  U.$('bd').innerHTML=ROWS.map(function(x){
+  U.$('bd').innerHTML=view().map(function(x){
     var s=SEL[key(x)], l=left(x), dis=l<=0?' disabled':'';
     return '<tr class="'+(s?'sel':'')+'"><td><input type="checkbox" data-ck="'+x.id+'"'+(s?' checked':'')+dis+'></td>'+
       '<td>'+U.esc(x.po_no)+'<div class="muted">'+U.esc(x.order_date||'')+'</div></td><td>'+U.esc(x.vendor)+'</td>'+
@@ -58,10 +64,10 @@ function render(){
   summary();
 }
 function summary(){
-  var ids=Object.keys(SEL), tot=0, vend={}, curs={};
-  ids.forEach(function(id){var x=ROWS.find(function(r){return String(r.id)===id});if(!x)return;tot+=U.num(x.unit_price)*SEL[id].qty;vend[x.vendor]=1;curs[cur(x)]=1});
+  var ids=Object.keys(SEL), tot=0, vend={}, curs={}, pos={};
+  ids.forEach(function(id){var x=findRow(id);if(!x)return;pos[x.po_no]=1;tot+=U.num(x.unit_price)*SEL[id].qty;vend[x.vendor]=1;curs[cur(x)]=1});
   tot=Math.round(tot*100)/100;
-  U.$('cnt').textContent=ids.length;U.$('tot').textContent=U.fmt(tot);
+  U.$('cnt').textContent=ids.length+(Object.keys(pos).length>1?'（'+Object.keys(pos).length+' 張採購單）':'');U.$('tot').textContent=U.fmt(tot);
   var vs=Object.keys(vend);U.$('vendor').value=vs.join('、');
   var cs=Object.keys(curs);U.$('cur').value=cs.join('、');
   var ntd=cs.length===1&&cs[0]==='NTD';U.$('fx').disabled=ntd;if(ntd)U.$('fx').value='1';else if(U.$('fx').value==='1'&&!cs.length)U.$('fx').value='';
@@ -75,18 +81,19 @@ function summary(){
 async function search(){
   if(!/^已建立/.test(U.$('msg').textContent))U.msg('查詢中…');
   try{var d=await U.api('/api/receipt/lines?q='+encodeURIComponent(U.$('q').value.trim())+(U.$('all').checked?'&all=1':'')+'&_='+Date.now());
-    ROWS=d.rows;render();if(/中…$/.test(U.$('msg').textContent))U.msg('');U.$('info').textContent=ROWS.length+' 列'+(d.truncated?'（只列前 300，請縮小條件）':'');
+    ROWS=d.rows;render();if(/中…$/.test(U.$('msg').textContent))U.msg('');U.$('info').textContent=ROWS.length+' 列'+(d.terms&&d.terms.length>1?'（'+d.terms.length+' 個條件）':'')+(d.truncated?'（只列前 300，請縮小條件）':'');U.$('ckall').checked=false;
   }catch(e){U.msg(e.message,'err')}
 }
 U.$('go').onclick=search;U.$('q').onkeydown=function(e){if(e.key==='Enter')search()};
 U.$('bd').addEventListener('change',function(e){
   var t=e.target,id=t.dataset.ck||t.dataset.qty||t.dataset.wh;if(!id)return;
-  var x=ROWS.find(function(r){return String(r.id)===id});
-  if(t.dataset.ck){ if(t.checked){var w=document.querySelector('[data-wh="'+id+'"]');SEL[id]={qty:U.num(document.querySelector('[data-qty="'+id+'"]').value),wh:w?w.value:null}} else delete SEL[id]; render(); return; }
+  var x=findRow(id);
+  if(t.dataset.ck){ if(t.checked){var w=document.querySelector('[data-wh="'+id+'"]');SEL[id]={qty:U.num(document.querySelector('[data-qty="'+id+'"]').value),wh:w?w.value:null,row:x}} else delete SEL[id]; render(); return; }
   if(t.dataset.qty){ var q=U.num(t.value); if(SEL[id])SEL[id].qty=q; document.querySelector('[data-amt="'+id+'"]').textContent=U.fmt(U.num(x.unit_price)*q); summary(); }
   if(t.dataset.wh && SEL[id]) SEL[id].wh=t.value;
 });
-U.$('ckall').onchange=function(){var on=this.checked;ROWS.forEach(function(x){if(left(x)<=0)return;var id=key(x);if(on)SEL[id]=SEL[id]||{qty:left(x),wh:'Z'};else delete SEL[id]});render()};
+U.$('ckall').onchange=function(){var on=this.checked;ROWS.forEach(function(x){if(left(x)<=0)return;var id=key(x);if(on)SEL[id]=SEL[id]||{qty:left(x),wh:x.is_fee?null:'Z',row:x};else delete SEL[id]});render()};
+U.$('unsel').onclick=function(){if(Object.keys(SEL).length&&!confirm('清除全部已勾選的明細？'))return;SEL={};U.$('ckall').checked=false;render()};
 U.$('amt').oninput=summary;
 U.$('save').onclick=async function(){
   var ids=Object.keys(SEL);if(!ids.length){U.msg('請先勾選要進貨的明細','err');return}
@@ -94,7 +101,7 @@ U.$('save').onclick=async function(){
     lines:ids.map(function(id){return{po_line_id:+id,qty:SEL[id].qty,wh_code:SEL[id].wh}})};
   this.disabled=true;
   try{var r=await U.api('/api/docs/receipt',body);
-    U.msg('已建立進貨單 '+r.doc_no+'（待阿國確認收貨入庫'+(body.invoice_no?'':'；發票之後在「單據查詢」補')+'）','good');SEL={};['inv','invd','amt','fx','note'].forEach(function(k){U.$(k).value=''});search();
+    U.docMsg('已建立進貨單 '+r.doc_no+'（待阿國確認收貨入庫'+(body.invoice_no?'':'；發票之後在「單據查詢」補')+'）',r.doc_no);SEL={};['inv','invd','amt','fx','note'].forEach(function(k){U.$(k).value=''});search();
   }catch(e){U.msg(e.message,'err')}finally{this.disabled=false}
 };
 U.$('dd').value=U.today();

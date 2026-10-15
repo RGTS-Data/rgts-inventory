@@ -25,7 +25,7 @@
     <label>領料日期<input type="date" id="dd"></label>
     <label style="grid-column:span 2">備註<input id="note"></label>
   </div>
-  <p><button id="save" class="pri">建立領料單並扣帳</button> <span class="muted">任何一列庫存不足 → 整張不過帳</span></p>
+  <p><button id="save" class="pri">建立領料單並扣帳</button> <span class="muted">任何一列庫存不足 → 整張不過帳。尚需 &gt; 0 但本次沒領的料（例：無庫存）會以「數量 0」列在單上，不扣帳。數量欄可用 ↑↓／Enter 上下移動。</span></p>
   <div id="msg" class="msg"></div>
 </div>
 
@@ -75,9 +75,15 @@ U.$('save').onclick=async function(){
   if(!PJ){U.msg('請先輸入專案號並載入','err');return}
   var lines=[];
   Object.keys(QTY).forEach(function(i){var q=U.num(QTY[i]);if(q>0)lines.push({part_no:ROWS[i].part_no,name:ROWS[i].name,qty:q,wh_code:WHS[i]||bestWh(ROWS[i])})});
+  // 本次沒領（多半是無庫存）但 BOM 還需要的料，也以「數量 0」列進單據：備料／產線點料看得到整個專案還缺什麼（Willy 2026-10-15）
+  // 不扣帳、不寫流水帳；已出貨的專案只能補料，不帶。
+  var zeros=[];
+  if(!SHIP)ROWS.forEach(function(r,i){var l=leftOf(r);if(l>0&&!(U.num(QTY[i])>0)){var oh=r.on_hand||0;
+    zeros.push({part_no:r.part_no,name:r.name,qty:0,wh_code:WHS[i]||bestWh(r),note:'未領：尚需 '+U.fmt(l)+(oh>0?'（庫存 '+U.fmt(oh)+'）':'（無庫存）')})}});
   U.$('extra').querySelectorAll('tr').forEach(function(tr){var p=tr.querySelector('[data-xp]').value.trim(),q=U.num(tr.querySelector('[data-xq]').value);
     if(p&&q>0)lines.push({part_no:p,qty:q,wh_code:tr.querySelector('[data-xw]').value,note:tr.querySelector('[data-xn]').value.trim(),kind:tr.querySelector('[data-xk]').value||null})});
   if(!lines.length){U.msg('沒有要領的料（本次數量都是 0）','err');return}
+  var nIssue=lines.length;
   if(lines.some(function(l){return l.kind==='loss'&&!l.note})){U.msg('損耗補料要寫原因（例：產線打壞、測試燒毀）','err');return}
   if(SHIP&&lines.some(function(l){return!l.note})){U.msg('已出貨的專案只能補料，每一列都要寫原因','err');return}
   // 吃到別張母單保留的料 → 不擋，但要人確認（保留是軟性的，擋死會卡產線）
@@ -85,10 +91,11 @@ U.$('save').onclick=async function(){
     if(r&&r.reserved_other>0){var tot=lines.filter(function(y){return y.part_no===l.part_no}).reduce(function(a,y){return a+y.qty},0);
       if(tot>r.on_hand-r.reserved_other+1e-9&&over.indexOf(l.part_no)<0)over.push(l.part_no+'（保留給 '+(r.reserved_by||[]).join('、')+'）')}});
   if(over.length&&!confirm('以下料號會用到別張母單保留的庫存：\n'+over.join('\n')+'\n\n確定還是要領？'))return;
-  if(!confirm('專案 '+PJ+' 建立領料單，共 '+lines.length+' 列，確定扣帳？'))return;
+  if(!confirm('專案 '+PJ+' 建立領料單，領料 '+nIssue+' 列'+(zeros.length?'＋未領 '+zeros.length+' 列（數量 0，只列在單上不扣帳）':'')+'，確定扣帳？'))return;
+  lines=lines.concat(zeros);
   this.disabled=true;
   try{var r=await U.api('/api/docs/issue',{project_no:PJ,doc_date:U.$('dd').value,note:U.$('note').value.trim(),lines:lines});
-    U.msg('已建立領料單 '+r.doc_no+'（'+r.lines+' 列，已扣帳）','good');U.$('extra').innerHTML='';U.$('note').value='';await load();
+    U.docMsg('已建立領料單 '+r.doc_no+'（領料 '+r.lines+' 列已扣帳'+(r.zero?'；未領 '+r.zero+' 列只列在單上':'')+'）',r.doc_no);U.$('extra').innerHTML='';U.$('note').value='';await load();
   }catch(e){U.msg(e.message,'err')}finally{this.disabled=false}
 };
 U.$('dd').value=U.today();
