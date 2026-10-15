@@ -73,7 +73,7 @@ U.$('save').onclick=async function(){
   if(!confirm('建立調撥單，共 '+lines.length+' 列'+(toJig?'\n治具：'+U.JIG[jig]+(jn?'（'+jn+'）':''):'')+'\n確定過帳？'))return;
   this.disabled=true;
   try{var r=await U.api('/api/docs/transfer',{doc_date:U.$('dd').value,project_no:U.$('pj').value.trim(),note:U.$('note').value.trim(),jig:jig,jig_note:jn,lines:lines});
-    U.msg('已建立調撥單 '+r.doc_no+'（已過帳）','good');U.$('bd').innerHTML='';cache={};
+    U.docMsg('已建立調撥單 '+r.doc_no+'（已過帳）',r.doc_no);U.$('bd').innerHTML='';cache={};
     document.querySelectorAll('input[name=jig]').forEach(function(x){x.checked=false});U.$('jignote').value='';row();refreshJig();
   }catch(e){U.msg(e.message,'err');if(e.code==='jig_required')U.$('jigbox').scrollIntoView({behavior:'smooth',block:'center'})}finally{this.disabled=false}
 };

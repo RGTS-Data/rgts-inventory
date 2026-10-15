@@ -65,6 +65,7 @@ export function postStmts(env, { type, docNo, project, invoiceNo, email, lines }
 
   for (const l of lines) {
     if (isMemo(l)) continue;
+    if (!(Math.abs(Number(l.qty)) > 0)) continue;   // 數量 0＝領料單的「未領」列（只列在單上），不動庫存
     if (type === 'receipt') {
       S.push(ensure(l.part_no, l.wh_code, l.name), add(l.part_no, l.wh_code, l.qty), move('receipt', l, l.wh_code, l.qty));
     } else if (type === 'issue') {
