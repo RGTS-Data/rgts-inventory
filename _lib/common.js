@@ -32,6 +32,25 @@
     m.innerHTML = U.esc(text) + '　<a class="pn" href="/print.html?doc=' + q + '" target="_blank">🖨 列印</a>　' +
       '<a class="pn" href="/print.html?doc=' + q + '&auto=xlsx" target="_blank">📊 匯出 Excel</a>';
   };
+  // 統一發票（後端 functions/api/_lib/gui.js 要同步）：2 英文＋8 數字；採購總表的「無／-／刪單」不算發票
+  U.GUI_RE = /^[A-Z]{2}\d{8}$/;
+  U.normGui = function (s) { return String(s == null ? '' : s).toUpperCase().replace(/[\s\-－–]/g, ''); };
+  U.realInv = function (s) { var v = U.normGui(s); return v && !/^(無|-+|—|刪單|未開|NA|N\/A)$/i.test(v) ? v : ''; };
+  U.guiErr = function (v, noGui) { v = U.normGui(v); return !v || noGui || U.GUI_RE.test(v) ? '' : '格式不對：統一發票是 2 個英文字母＋8 個數字（例 ET94824929）'; };
+  // 拍發票 → 縮圖（長邊 ≤1600、JPEG）→ /api/docs/invoice-ocr。回解析結果（不寫資料）
+  U.ocrInvoice = function (file) {
+    return new Promise(function (ok, no) {
+      var img = new Image(), url = URL.createObjectURL(file);
+      img.onload = function () {
+        var k = Math.min(1, 1600 / Math.max(img.width, img.height)), c = document.createElement('canvas');
+        c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+        c.getContext('2d').drawImage(img, 0, 0, c.width, c.height); URL.revokeObjectURL(url);
+        U.api('/api/docs/invoice-ocr', { image: c.toDataURL('image/jpeg', 0.85).split(',')[1], media_type: 'image/jpeg' }).then(ok, no);
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); no(new Error('讀不到這張照片')); };
+      img.src = url;
+    });
+  };
   window.U = U;
 
   // 數量欄（input.q）鍵盤操作：↓／Enter＝下一列、↑＝上一列，跳過去自動全選（直接打字就覆蓋）。

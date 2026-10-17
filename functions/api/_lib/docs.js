@@ -89,11 +89,11 @@ export function postStmts(env, { type, docNo, project, invoiceNo, email, lines }
 export function createStmts(env, h, lines) {
   const S = [env.DB.prepare(
     `INSERT INTO inv_docs (doc_no, doc_type, doc_date, status, vendor, invoice_no, invoice_amount, project_no, note, created_by, created_at, reverses,
-                           invoice_date, currency, fx_rate, jig, jig_note)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+                           invoice_date, currency, fx_rate, jig, jig_note, no_gui)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   ).bind(h.doc_no, h.doc_type, h.doc_date, h.status, h.vendor ?? null, h.invoice_no ?? null, h.invoice_amount ?? null,
     h.project_no ?? null, h.note ?? null, h.email, nowIso(), h.reverses ?? null,
-    h.invoice_date ?? null, h.currency ?? null, h.fx_rate ?? null, h.jig ?? null, h.jig_note ?? null)];
+    h.invoice_date ?? null, h.currency ?? null, h.fx_rate ?? null, h.jig ?? null, h.jig_note ?? null, h.no_gui ? 1 : 0)];
   lines.forEach((l, i) => S.push(env.DB.prepare(
     `INSERT INTO inv_doc_lines (doc_id, seq, part_no, name, qty, wh_code, to_wh, po_line_id, po_no, unit_price, amount, note, kind)
      VALUES ((SELECT id FROM inv_docs WHERE doc_no = ?),?,?,?,?,?,?,?,?,?,?,?,?)`

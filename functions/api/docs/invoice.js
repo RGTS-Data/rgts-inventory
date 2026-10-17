@@ -6,6 +6,7 @@ import { requireAuth } from '../_lib/auth.js';
 import { ok, err, readBody } from '../_lib/json.js';
 import { optNum } from '../_lib/util.js';
 import { docDate } from '../_lib/docs.js';
+import { guiError, poInvoices, reconcileInvoice, normGui } from '../_lib/gui.js';
 
 export async function onRequestPost({ request, env }) {
   const { failed } = requireAuth(request, env);
@@ -19,7 +20,21 @@ export async function onRequestPost({ request, env }) {
   if (d.inv_checked_at) return err(`發票已由 ${d.inv_checked_by} 核對完成，不能再改`, 409);
 
   const set = [], bind = [];
-  if ('invoice_no' in b) { set.push('invoice_no=?'); bind.push(String(b.invoice_no || '').trim() || null); }
+  // 發票防錯（2026-10-17）：格式＋跟採購總表（阿國）對；no_gui＝無統一發票（國外／淘寶／收據）免格式檢查
+  const noGui = 'no_gui' in b ? (b.no_gui ? 1 : 0) : (d.no_gui ? 1 : 0);
+  if ('no_gui' in b) { set.push('no_gui=?'); bind.push(noGui); }
+  if ('invoice_no' in b) {
+    const ge = guiError(b.invoice_no, noGui);
+    if (ge) return err(ge, 400, { code: 'gui_format' });
+    let v = (noGui ? String(b.invoice_no || '').trim() : normGui(b.invoice_no)) || null;
+    if (v) {
+      const ids = ((await env.DB.prepare(`SELECT po_line_id FROM inv_doc_lines WHERE doc_id = ?`).bind(d.id).all()).results || []).map((x) => x.po_line_id);
+      const inv = reconcileInvoice(v, await poInvoices(env, ids), noGui);
+      if (inv.error) return err(inv.error, 409, { code: inv.code, po_invoice: inv.po_invoice });
+      v = inv.invoice;
+    }
+    set.push('invoice_no=?'); bind.push(v);
+  }
   if ('invoice_date' in b) { set.push('invoice_date=?'); bind.push(b.invoice_date ? docDate(b.invoice_date) : null); }
   if ('invoice_amount' in b) {
     const v = optNum(b.invoice_amount);

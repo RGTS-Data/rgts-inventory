@@ -47,6 +47,8 @@ function invBox(h,tot){
   return'<div class="card" style="margin:10px 0 0;background:var(--bg)"><h3>發票 '+st+cmp+'</h3><div class="grid">'+
     inp('invoice_no','發票號碼',h.invoice_no)+inp('invoice_date','發票日期',h.invoice_date,'date')+
     inp('invoice_amount','發票未稅金額（'+U.esc(h.currency||'NTD')+'）',h.invoice_amount)+inp('fx_rate','匯率',ntd?1:h.fx_rate,'',ntd)+'</div>'+
+    (lock?'':'<p class="bar" style="margin:8px 0 0"><label><input type="checkbox" id="f_no_gui"'+(h.no_gui?' checked':'')+'> 無統一發票（國外／淘寶／收據）</label>'+
+      '<label class="pn" style="cursor:pointer">📷 拍發票自動填<input type="file" id="f_ocr" accept="image/*" capture="environment" style="display:none"></label><span id="f_ocrmsg" class="muted"></span></p>')+
     (lock?'':'<p><button data-act="invsave">💾 儲存發票</button>'+(CAN?' <input id="inote" placeholder="核對備註" style="width:220px"> <button class="pri" data-act="invok">✓ 發票核對完成</button>':'')+'</p>')+'</div>';
 }
 async function show(no){
@@ -73,6 +75,8 @@ async function show(no){
       try{
         if(a==='void'){if(!confirm('作廢 '+no+'？'))return;await U.api('/api/docs/void',{doc_no:no});}
         else if(a==='invsave'){var body={doc_no:no};['invoice_no','invoice_date','invoice_amount','fx_rate'].forEach(function(k){var el=U.$('f_'+k);if(el&&!el.disabled)body[k]=el.value.trim()});
+          if(U.$('f_no_gui'))body.no_gui=U.$('f_no_gui').checked;
+          var ge=U.guiErr(body.invoice_no,body.no_gui);if(ge){U.msg('發票號碼'+ge,'err');return}
           await U.api('/api/docs/invoice',body);U.msg(no+' 發票已儲存','good');load();show(no);return;}
         else if(a==='invok'){if(!confirm('確認發票與採購金額一致，標記發票核對完成？之後發票欄位就不能再改。'))return;
           await U.api('/api/docs/check',{doc_no:no,action:'invoice_ok',note:(U.$('inote')||{}).value||''});U.msg(no+' 發票核對完成','good');load();show(no);return;}
@@ -83,6 +87,11 @@ async function show(no){
         U.msg(no+(a==='approve'?' 已確認收貨入庫':a==='reject'?' 已退回':' 已作廢'),'good');load();show(no);
       }catch(e){U.msg(e.message,'err')}
     }});
+    var oc=U.$('f_ocr');if(oc)oc.onchange=async function(){var f=this.files[0];this.value='';if(!f)return;var om=U.$('f_ocrmsg');om.className='muted';om.textContent='解析中…';
+      try{var r=await U.ocrInvoice(f);if(!r.is_gui)U.$('f_no_gui').checked=true;
+        if(r.invoice_no)U.$('f_invoice_no').value=r.invoice_no;if(r.invoice_date)U.$('f_invoice_date').value=r.invoice_date;if(r.amount_untaxed!=null)U.$('f_invoice_amount').value=r.amount_untaxed;
+        om.className=r.confidence==='low'?'err':'good';om.textContent='已帶入 '+[r.invoice_no,r.invoice_date,r.amount_untaxed!=null?'未稅 '+U.fmt(r.amount_untaxed):''].filter(Boolean).join('／')+(r.confidence==='low'?'（照片不清楚，請逐欄核對）':'，核對後按「儲存發票」');
+      }catch(e){om.className='err';om.textContent=e.message}};
     U.$('detail').scrollIntoView({behavior:'smooth'});
   }catch(e){U.msg(e.message,'err')}
 }

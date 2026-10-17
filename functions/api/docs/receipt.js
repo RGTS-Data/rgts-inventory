@@ -11,6 +11,7 @@ import { ok, err, readBody } from '../_lib/json.js';
 import { chunk, normCur, optNum } from '../_lib/util.js';
 import { createDoc, docDate, parseLines } from '../_lib/docs.js';
 import { receivedMap } from '../_lib/receipt-qty.js';
+import { guiError, poInvoices, reconcileInvoice } from '../_lib/gui.js';
 
 export async function onRequestPost({ request, env }) {
   const { user, failed } = requireAuth(request, env);
@@ -18,10 +19,16 @@ export async function onRequestPost({ request, env }) {
   if (!env.DB) return err('DB binding missing', 500);
   const b = await readBody(request);
   const lines = parseLines(b.lines).filter((l) => l.po_line_id && l.qty > 0);
-  const invoiceNo = String(b.invoice_no || '').trim() || null;
+  // 2026-10-17 發票防錯：① 採購總表已填就自動帶入、不一致擋下 ② 統一發票格式（勾 no_gui 免檢）
+  const noGui = b.no_gui ? 1 : 0;
   const invAmt = optNum(b.invoice_amount);
   const fx = optNum(b.fx_rate);
   if (!lines.length) return err('至少要有一列（勾選採購明細並填數量）');
+  const ge = guiError(b.invoice_no, noGui);
+  if (ge) return err(ge, 400, { code: 'gui_format' });
+  const inv = reconcileInvoice(b.invoice_no, await poInvoices(env, lines.map((l) => l.po_line_id)), noGui);
+  if (inv.error) return err(inv.error, 409, { code: inv.code, po_invoice: inv.po_invoice });
+  const invoiceNo = inv.invoice;
   if (lines.length > 80) return err('一張單最多 80 列');
   if (Number.isNaN(invAmt)) return err('發票未稅金額要是數字（沒有發票就留空）');
   if (Number.isNaN(fx) || (fx != null && fx <= 0)) return err('匯率要是大於 0 的數字（還不知道就留空）');
@@ -58,9 +65,9 @@ export async function onRequestPost({ request, env }) {
   const currency = [...curs][0];
   const { docNo } = await createDoc(env, 'receipt', {
     doc_date: docDate(b.doc_date), status: 'pending', vendor: [...vendors][0],
-    invoice_no: invoiceNo, invoice_amount: invAmt, invoice_date: invDate,
+    invoice_no: invoiceNo, invoice_amount: invAmt, invoice_date: invDate, no_gui: noGui,
     currency, fx_rate: currency === 'NTD' ? 1 : fx, note: b.note ? String(b.note) : null,
   }, lines, { email: user.email });
   const total = lines.reduce((s, l) => s + l.amount, 0);
-  return ok({ doc_no: docNo, status: 'pending', currency, po_amount: Math.round(total * 100) / 100, invoice_amount: invAmt });
+  return ok({ doc_no: docNo, status: 'pending', currency, po_amount: Math.round(total * 100) / 100, invoice_amount: invAmt, invoice_no: invoiceNo, invoice_from_po: !!inv.from_po });
 }
