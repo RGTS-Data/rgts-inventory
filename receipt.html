@@ -27,13 +27,18 @@
   <div class="grid">
     <label>進貨日期<input type="date" id="dd"></label>
     <label>廠商<input id="vendor" readonly placeholder="勾選明細後自動帶入"></label>
-    <label>發票號碼<input id="inv" placeholder="沒有可留空，之後補"></label>
+    <label>發票號碼<input id="inv" placeholder="沒有可留空，之後補"><span id="invhint" class="muted" style="font-weight:400"></span></label>
     <label>發票日期<input type="date" id="invd"></label>
     <label>發票未稅金額<input id="amt" placeholder="沒有可留空（原幣）"></label>
     <label>幣別<input id="cur" readonly placeholder="依採購單自動帶入"></label>
     <label>匯率<input id="fx" placeholder="依廠商發票（台幣免填）"></label>
     <label style="grid-column:span 2">備註<input id="note"></label>
   </div>
+  <p class="bar" style="margin:8px 0 0">
+    <label><input type="checkbox" id="nogui"> 無統一發票（國外廠商／淘寶／收據，不檢查格式）</label>
+    <label class="pn" style="cursor:pointer">📷 拍發票自動填<input type="file" id="ocr" accept="image/*" capture="environment" style="display:none"></label>
+    <span id="ocrmsg" class="muted"></span>
+  </p>
   <p>已選 <b id="cnt">0</b> 列，採購未稅合計 <b id="tot">0</b>　<span id="diff"></span></p>
   <button id="save" class="pri">存成進貨單（待核對）</button>
   <div id="msg" class="msg"></div>
@@ -63,12 +68,29 @@ function render(){
   }).join('')||'<tr><td colspan="14" class="muted">沒有符合的採購明細</td></tr>';
   summary();
 }
+// 發票防錯 ①：採購總表（阿國）已填發票 → 自動帶入並鎖住；多張不同發票 → 擋（一張進貨單一張發票，同正航）
+var PO_INV=[],PO_MAP={};
+function invFromPo(ids){
+  var m={};ids.forEach(function(id){var x=findRow(id),v=x&&U.realInv(x.invoice_no);if(v)(m[v]=m[v]||[]).indexOf(x.po_no)<0&&m[v].push(x.po_no)});
+  PO_MAP=m;PO_INV=Object.keys(m);var el=U.$('inv');
+  if(PO_INV.length===1){el.value=PO_INV[0];el.readOnly=true;}
+  else{if(el.readOnly){el.value='';el.readOnly=false}}
+  invHint();
+}
+function invHint(){
+  var m=PO_MAP;
+  var h=U.$('invhint'),el=U.$('inv');
+  if(PO_INV.length>1){h.innerHTML='<span class="err">⚠ 勾到的採購明細在採購總表有 '+PO_INV.length+' 張發票：'+PO_INV.map(function(v){return U.esc(v)+'（'+U.esc((m[v]||[]).join('、'))+'）'}).join('、')+' → 請分開打進貨單</span>';return}
+  if(PO_INV.length===1){h.innerHTML='<span class="good">✓ 採購總表（阿國）已填，自動帶入</span>';return}
+  var e=U.guiErr(el.value,U.$('nogui').checked);h.innerHTML=e?'<span class="err">'+e+'</span>':'';
+}
 function summary(){
   var ids=Object.keys(SEL), tot=0, vend={}, curs={}, pos={};
   ids.forEach(function(id){var x=findRow(id);if(!x)return;pos[x.po_no]=1;tot+=U.num(x.unit_price)*SEL[id].qty;vend[x.vendor]=1;curs[cur(x)]=1});
   tot=Math.round(tot*100)/100;
   U.$('cnt').textContent=ids.length+(Object.keys(pos).length>1?'（'+Object.keys(pos).length+' 張採購單）':'');U.$('tot').textContent=U.fmt(tot);
   var vs=Object.keys(vend);U.$('vendor').value=vs.join('、');
+  invFromPo(ids);
   var cs=Object.keys(curs);U.$('cur').value=cs.join('、');
   var ntd=cs.length===1&&cs[0]==='NTD';U.$('fx').disabled=ntd;if(ntd)U.$('fx').value='1';else if(U.$('fx').value==='1'&&!cs.length)U.$('fx').value='';
   var a=U.$('amt').value.trim(), d=U.$('diff');
@@ -95,13 +117,30 @@ U.$('bd').addEventListener('change',function(e){
 U.$('ckall').onchange=function(){var on=this.checked;ROWS.forEach(function(x){if(left(x)<=0)return;var id=key(x);if(on)SEL[id]=SEL[id]||{qty:left(x),wh:x.is_fee?null:'Z',row:x};else delete SEL[id]});render()};
 U.$('unsel').onclick=function(){if(Object.keys(SEL).length&&!confirm('清除全部已勾選的明細？'))return;SEL={};U.$('ckall').checked=false;render()};
 U.$('amt').oninput=summary;
+U.$('inv').oninput=invHint;U.$('nogui').onchange=invHint;
+U.$('ocr').onchange=async function(){
+  var f=this.files[0];this.value='';if(!f)return;var om=U.$('ocrmsg');om.className='muted';om.textContent='解析中…';
+  try{var r=await U.ocrInvoice(f),notes=[];
+    if(!r.is_gui){U.$('nogui').checked=true;notes.push('不是統一發票，已勾「無統一發票」')}
+    if(r.invoice_no){if(U.$('inv').readOnly){if(U.normGui(r.invoice_no)!==U.$('inv').value)notes.push('⚠ 照片發票 '+r.invoice_no+' 跟採購總表 '+U.$('inv').value+' 不一樣！')}else U.$('inv').value=r.invoice_no}
+    if(r.invoice_date)U.$('invd').value=r.invoice_date;
+    if(r.amount_untaxed!=null)U.$('amt').value=r.amount_untaxed;
+    if(r.seller_name&&U.$('vendor').value&&U.$('vendor').value.indexOf(r.seller_name.slice(0,2))<0)notes.push('⚠ 發票賣方「'+r.seller_name+'」跟廠商不一樣？');
+    if(r.confidence==='low')notes.push('⚠ 照片不清楚，請逐欄核對');
+    om.className=notes.some(function(n){return n[0]==='⚠'})?'err':'good';
+    om.textContent='已帶入：'+[r.invoice_no,r.invoice_date,r.amount_untaxed!=null?'未稅 '+U.fmt(r.amount_untaxed):''].filter(Boolean).join('／')+(r.tax!=null?'（稅 '+U.fmt(r.tax)+'，總計 '+U.fmt(r.total)+'）':'')+(notes.length?'　'+notes.join('　'):'　請核對後再存');
+    invHint();summary();
+  }catch(e){om.className='err';om.textContent=e.message}
+};
 U.$('save').onclick=async function(){
   var ids=Object.keys(SEL);if(!ids.length){U.msg('請先勾選要進貨的明細','err');return}
-  var body={doc_date:U.$('dd').value,invoice_no:U.$('inv').value.trim(),invoice_date:U.$('invd').value,invoice_amount:U.$('amt').value.trim(),fx_rate:U.$('fx').disabled?'':U.$('fx').value.trim(),note:U.$('note').value.trim(),
+  if(PO_INV.length>1){U.msg('勾到的採購明細有多張發票，請分開打進貨單','err');return}
+  var ge=U.guiErr(U.$('inv').value,U.$('nogui').checked);if(ge){U.msg('發票號碼'+ge,'err');U.$('inv').focus();return}
+  var body={doc_date:U.$('dd').value,invoice_no:U.$('inv').value.trim(),invoice_date:U.$('invd').value,invoice_amount:U.$('amt').value.trim(),fx_rate:U.$('fx').disabled?'':U.$('fx').value.trim(),note:U.$('note').value.trim(),no_gui:U.$('nogui').checked,
     lines:ids.map(function(id){return{po_line_id:+id,qty:SEL[id].qty,wh_code:SEL[id].wh}})};
   this.disabled=true;
   try{var r=await U.api('/api/docs/receipt',body);
-    U.docMsg('已建立進貨單 '+r.doc_no+'（待阿國確認收貨入庫'+(body.invoice_no?'':'；發票之後在「單據查詢」補')+'）',r.doc_no);SEL={};['inv','invd','amt','fx','note'].forEach(function(k){U.$(k).value=''});search();
+    U.docMsg('已建立進貨單 '+r.doc_no+'（待阿國確認收貨入庫'+(body.invoice_no?'':'；發票之後在「單據查詢」補')+'）',r.doc_no);SEL={};['inv','invd','amt','fx','note'].forEach(function(k){U.$(k).value=''});U.$('inv').readOnly=false;U.$('nogui').checked=false;U.$('ocrmsg').textContent='';search();
   }catch(e){U.msg(e.message,'err')}finally{this.disabled=false}
 };
 U.$('dd').value=U.today();
